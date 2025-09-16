@@ -11,17 +11,16 @@ export default function Chat() {
   ]);
 
   // Regex to validate GitHub repo URLs
-  const githubRegex = /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/?$/;
+  const githubRegex =
+    /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/?$/;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!url.trim()) return;
 
-    // Add user message
     setMessages((prev) => [...prev, { sender: "user", text: url }]);
 
-    // Check URL validity
     if (githubRegex.test(url)) {
       setMessages((prev) => [
         ...prev,
@@ -30,6 +29,36 @@ export default function Chat() {
           text: "✅ Thanks! That looks like a valid GitHub repository. Processing...",
         },
       ]);
+      try {
+        const response = await fetch(
+          process.env.NEXT_PUBLIC_BACKEND_URL ||
+            "http://localhost:5000/api/ingest",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ github_url: url }),
+          }
+        );
+        const data = await response.json();
+        setMessages((prev) => [
+          ...prev,
+          {
+            sender: "bot",
+            text:
+              data.status === "started"
+                ? "🚀 Ingestion started! Please wait while we process the repository."
+                : `⚠️ Error: ${data.message || "Failed to start ingestion."}`,
+          },
+        ]);
+      } catch (error) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            sender: "bot",
+            text: "❌ Error connecting to backend. Please try again later.",
+          },
+        ]);
+      }
     } else {
       setMessages((prev) => [
         ...prev,
