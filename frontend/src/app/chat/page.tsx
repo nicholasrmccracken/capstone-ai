@@ -75,7 +75,7 @@ export default function Chat() {
   return (
     <main className="flex flex-col items-center min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white py-10 px-6">
       <h2 className="text-4xl font-bold mb-6 text-blue-400 drop-shadow-md">
-        RepoReaper Chat
+        RepoRover Chat
       </h2>
 
       {/* Chat Window */}
