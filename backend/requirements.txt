@@ -1,0 +1,8 @@
+flask
+requests
+langchain
+langchain-text-splitters
+langchain-google-genai
+langchain-community
+elasticsearch==8.15.0
+python-dotenv

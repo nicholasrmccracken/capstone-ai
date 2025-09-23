@@ -1,0 +1,22 @@
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# GitHub Configuration
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+
+# Elasticsearch Configuration
+ES_HOST = os.getenv("ES_HOST", "https://localhost:9200")
+ES_USER = os.getenv("ES_USER", "elastic")
+ES_PASSWORD = os.getenv("ES_PASSWORD", "rFLiQ8VJkQ_a*6DCtzd4")
+
+# AI API Configurations
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+
+# Verification
+if not GITHUB_TOKEN:
+    print("Warning: GITHUB_TOKEN not set. GitHub API may be rate limited.")
+
+if not GOOGLE_API_KEY:
+    print("Warning: GOOGLE_API_KEY not set. Embeddings will not work.")
