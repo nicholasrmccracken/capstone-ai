@@ -7,6 +7,9 @@
 .env.test.local
 .env.production.local
 *.env
+./backend/elasticsearch
+./backend/elasticsearch-7.17.9
+./backend/elasticsearch-7.17.9.zip
 
 # ========================================
 # Node.js / Frontend (Next.js)
@@ -196,6 +199,7 @@ dmypy.json
 # Entire Elasticsearch installation directory
 # (This includes 1k+ files that should not be committed)
 backend/elasticsearch/
+backend/elasticsearch-7.17.9/
 
 # Elasticsearch data and logs (if elasticsearch/ is not ignored)
 backend/elasticsearch/data/

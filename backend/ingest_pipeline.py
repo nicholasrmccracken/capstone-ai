@@ -16,6 +16,9 @@ import json
 import hashlib
 import time
 import random
+import tempfile
+import os
+from io import StringIO
 from typing import List, Dict, Any
 
 # Mock embeddings for testing when Google Generative AI has compatibility issues
@@ -38,7 +41,7 @@ class MockGoogleGenerativeAIEmbeddings:
 try:
     from langchain_google_genai import GoogleGenerativeAIEmbeddings
     print("✅ Using real Google Generative AI embeddings")
-except ImportError as e:
+except Exception as e:
     print(f"⚠️  Google Generative AI not available ({e}), using mock embeddings for testing")
     GoogleGenerativeAIEmbeddings = MockGoogleGenerativeAIEmbeddings
 
@@ -163,10 +166,33 @@ def ingest_github_repo(github_url):
                 chunks = splitter.create_documents(texts=[json_data])
             except Exception:
                 # fallback to text splitting if JSON is invalid
-                loader = TextLoader(content)
-                docs = loader.load()
-                splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-                chunks = splitter.split_documents(docs)
+                # Create temporary file for TextLoader
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as temp_file:
+                    temp_file.write(content)
+                    temp_file_path = temp_file.name
+
+                    try:
+                        loader = TextLoader(temp_file_path)
+                        docs = loader.load()
+                        splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+                        chunks = splitter.split_documents(docs)
+                    finally:
+                        # Clean up temporary file
+                        os.unlink(temp_file_path)
+        elif file_path.endswith(".json") and RecursiveJsonSplitter is None:
+            # Create temporary file for TextLoader if JSON splitter not available
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as temp_file:
+                temp_file.write(content)
+                temp_file_path = temp_file.name
+
+                try:
+                    loader = TextLoader(temp_file_path)
+                    docs = loader.load()
+                    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+                    chunks = splitter.split_documents(docs)
+                finally:
+                    # Clean up temporary file
+                    os.unlink(temp_file_path)
         # Supported code/text types
         else:
             ext_language_map = {
@@ -205,9 +231,11 @@ def ingest_github_repo(github_url):
                 splitter = RecursiveCharacterTextSplitter.from_language(language=language, chunk_size=1000, chunk_overlap=100)
             else:
                 splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-            loader = TextLoader(content)
-            docs = loader.load()
-            chunks = splitter.split_documents(docs)
+
+            # Use splitter directly on content for text files to avoid encoding issues
+            from langchain.schema import Document
+            doc = Document(page_content=content, metadata={"source": file_path})
+            chunks = splitter.split_documents([doc])
         # Generate embeddings and index in Elasticsearch
         try:
             # Initialize embeddings
@@ -243,7 +271,7 @@ def ingest_github_repo(github_url):
                     "chunk_id": generate_chunk_id(owner, repo, file_path, chunk.page_content),
                     "timestamp": int(time.time())
                 }
-                es.index(index="repo_chunks", document=doc)
+                es.index(index="repo_chunks", body=doc)
 
             print(f"Successfully indexed {len(chunks)} chunks from {file_path}")
 

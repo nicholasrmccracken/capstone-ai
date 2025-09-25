@@ -2,7 +2,8 @@ flask
 requests
 langchain
 langchain-text-splitters
-langchain-google-genai
+langchain-google-genai==0.0.6
 langchain-community
-elasticsearch==8.15.0
+elasticsearch==7.5.1
 python-dotenv
+google-generativeai>=0.2.0,<0.4.0
