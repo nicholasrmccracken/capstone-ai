@@ -7,9 +7,12 @@
 .env.test.local
 .env.production.local
 *.env
-./backend/elasticsearch
-./backend/elasticsearch-7.17.9
-./backend/elasticsearch-7.17.9.zip
+# Elasticsearch - all variations
+elasticsearch-*.zip
+elasticsearch*.zip
+backend/elasticsearch-*.zip
+backend/elasticsearch/
+backend/elasticsearch-7.17.9/
 
 # ========================================
 # Node.js / Frontend (Next.js)

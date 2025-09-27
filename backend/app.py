@@ -1,7 +1,9 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 from ingest_pipeline import ingest_github_repo
 
 app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
 
 @app.route("/api/ingest", methods=["POST"])
 def ingest():

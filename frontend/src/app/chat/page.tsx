@@ -30,15 +30,12 @@ export default function Chat() {
         },
       ]);
       try {
-        const response = await fetch(
-          process.env.NEXT_PUBLIC_BACKEND_URL ||
-            "http://localhost:5000/api/ingest",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ github_url: url }),
-          }
-        );
+        const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
+        const response = await fetch(`${backendUrl}/api/ingest`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ github_url: url }),
+        });
         const data = await response.json();
         setMessages((prev) => [
           ...prev,
