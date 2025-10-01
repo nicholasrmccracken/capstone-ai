@@ -1,3 +1,10 @@
+"""
+Ingestion pipeline for processing GitHub repositories.
+
+This module handles the ingestion of code from GitHub repositories into Elasticsearch,
+including text splitting, embedding generation, and indexing for semantic search.
+"""
+
 from github_utils import get_repo_files, get_file_content
 from langchain_community.document_loaders import TextLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -21,19 +28,20 @@ import os
 from io import StringIO
 from typing import List, Dict, Any
 
-INDEX_NAME = "repo_chunks"
-EMBEDDING_DIM = 1536
+# Configuration for the Elasticsearch index used to store code chunks
+INDEX_NAME = "repo_chunks"  # Name of the Elasticsearch index
+EMBEDDING_DIM = 1536  # Dimensionality of OpenAI ada-002 embeddings
 INDEX_DEFINITION = {
     "mappings": {
         "properties": {
-            "repo_owner": {"type": "keyword"},
-            "repo_name": {"type": "keyword"},
-            "file_path": {"type": "keyword"},
-            "content": {"type": "text"},
-            "metadata": {"type": "object"},
-            "embedding": {"type": "dense_vector", "dims": EMBEDDING_DIM},
-            "chunk_id": {"type": "keyword"},
-            "timestamp": {"type": "date", "format": "epoch_second"}
+            "repo_owner": {"type": "keyword"},      # GitHub repository owner
+            "repo_name": {"type": "keyword"},       # GitHub repository name
+            "file_path": {"type": "keyword"},       # Path to the file within the repo
+            "content": {"type": "text"},            # Actual code/content of the chunk
+            "metadata": {"type": "object"},         # Additional metadata from text splitting
+            "embedding": {"type": "dense_vector", "dims": EMBEDDING_DIM},  # Vector embedding for semantic search
+            "chunk_id": {"type": "keyword"},        # Unique identifier for the chunk
+            "timestamp": {"type": "date", "format": "epoch_second"}  # When the chunk was indexed
         }
     }
 }
@@ -209,10 +217,20 @@ def search_similar_chunks(query: str, repo_filter: str = None, top_k: int = 5) -
         return []
 
 
-# langchain splitter documentation: https://python.langchain.com/docs/concepts/text_splitters/
-def ingest_github_repo(github_url):
+"""
+Main ingestion function that processes a GitHub repository into Elasticsearch.
+
+This function fetches all files from the specified GitHub repository, splits them into
+manageable chunks using language-appropriate text splitters, generates embeddings,
+and indexes everything into Elasticsearch for later semantic search.
+
+See: https://python.langchain.com/docs/concepts/text_splitters/
+"""
+def ingest_github_repo(github_url: str):
+    # Extract repository owner and name from GitHub URL
     owner, repo = github_url.rstrip("/").split("/")[-2:]
 
+    # Initialize Elasticsearch client and ensure the index exists with correct mapping
     es = get_elasticsearch_client()
     try:
         ensure_index(es, recreate_if_invalid=True)
@@ -220,7 +238,7 @@ def ingest_github_repo(github_url):
         print(f"Error ensuring Elasticsearch index: {exc}")
         return
 
-    # Delete existing chunks for this repository to avoid mixing stale data
+    # Remove existing chunks for this repository to avoid duplicates and stale data
     try:
         delete_query = {
             "query": {
@@ -241,31 +259,42 @@ def ingest_github_repo(github_url):
         print("Warning: OPENAI_API_KEY not found. Skipping embeddings.")
         return
 
+    # Initialize the OpenAI embeddings model for generating vector representations
     embeddings_model = OpenAIEmbeddings(
         model="text-embedding-ada-002",
         api_key=OPENAI_API_KEY
     )
 
+    # Fetch all file paths from the GitHub repository
     files = get_repo_files(owner, repo)
-    for file_path in files:
-        content = get_file_content(owner, repo, file_path)
-        chunks = []
 
-        # Markdown
+    # Process each file in the repository
+    for file_path in files:
+        # Retrieve the full content of the current file
+        content = get_file_content(owner, repo, file_path)
+        chunks = []  # Will hold the split document chunks
+
+        # Split the file content into chunks based on file type for optimal processing
+        # Different file types need different chunking strategies to preserve semantic meaning
+
+        # For Markdown files: Use hierarchical splitting that respects document structure
+        # First split on headers (# ## ###) to keep sections together, then by size
         if file_path.endswith(".md") and MarkdownHeaderTextSplitter is not None:
             headers_to_split_on = [("#", "Header 1"), ("##", "Header 2"), ("###", "Header 3")]
             splitter = MarkdownHeaderTextSplitter(headers_to_split_on)
-            md_chunks = splitter.split_text(content)
+            md_chunks = splitter.split_text(content)  # Creates chunks preserving header hierarchy
             char_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-            chunks = char_splitter.split_documents(md_chunks)
-        # JSON
+            chunks = char_splitter.split_documents(md_chunks)  # Further split large sections
+        # For JSON files: Use specialized JSON splitter that preserves object structure
+        # Attempts structured splitting first, falls back to text splitting if JSON parsing fails
         elif file_path.endswith(".json") and RecursiveJsonSplitter is not None:
             import json
             try:
-                json_data = json.loads(content)
+                json_data = json.loads(content)  # Parse as JSON object
                 splitter = RecursiveJsonSplitter(max_chunk_size=1000)
-                chunks = splitter.create_documents(texts=[json_data])
+                chunks = splitter.create_documents(texts=[json_data])  # Structured chunking preserving JSON structure
             except Exception:
+                # JSON parsing failed, treat as text file and chunk by size
                 with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as temp_file:
                     temp_file.write(content)
                     temp_file_path = temp_file.name
@@ -276,6 +305,7 @@ def ingest_github_repo(github_url):
                     chunks = splitter.split_documents(docs)
                 finally:
                     os.unlink(temp_file_path)
+        # For JSON files without RecursiveJsonSplitter: Use text-based chunking as fallback
         elif file_path.endswith(".json") and RecursiveJsonSplitter is None:
             with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as temp_file:
                 temp_file.write(content)
@@ -288,6 +318,8 @@ def ingest_github_repo(github_url):
             finally:
                 os.unlink(temp_file_path)
         else:
+            # For programming languages: Use language-aware chunking that respects code structure
+            # Looks up file extension to determine language-specific splitting rules
             ext_language_map = {
                 ".py": Language.PYTHON,
                 ".js": Language.JS,
@@ -321,21 +353,28 @@ def ingest_github_repo(github_url):
             ext = next((e for e in ext_language_map if file_path.endswith(e)), None)
             if ext:
                 language = ext_language_map[ext]
+                # Use language-specific splitter that respects syntax (e.g., function boundaries, classes)
                 splitter = RecursiveCharacterTextSplitter.from_language(language=language, chunk_size=1000, chunk_overlap=100)
             else:
+                # Unknown file type: Use generic character-based chunking
                 splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
 
             from langchain.schema import Document
             doc = Document(page_content=content, metadata={"source": file_path})
-            chunks = splitter.split_documents([doc])
+            chunks = splitter.split_documents([doc])  # Standard chunking with 1000 char chunks and 100 char overlap
 
         try:
+            # Skip files that didn't produce any chunks (e.g., empty files)
             if not chunks:
                 continue
 
+            # Extract text content from chunks for batch embedding
             chunk_texts = [chunk.page_content for chunk in chunks]
+
+            # Generate vector embeddings for all chunks at once using OpenAI
             embeddings = embeddings_model.embed_documents(chunk_texts)
 
+            # Index each chunk into Elasticsearch with all metadata and embedding
             for chunk, embedding in zip(chunks, embeddings):
                 doc = {
                     "repo_owner": owner,
@@ -354,8 +393,8 @@ def ingest_github_repo(github_url):
             print(f"Error processing {file_path}: {str(e)}")
             continue
 
+    # Refresh the index to make all newly indexed documents immediately searchable
     try:
         es.indices.refresh(index=INDEX_NAME)
     except Exception as refresh_error:
         print(f"Warning: Failed to refresh index: {refresh_error}")
-

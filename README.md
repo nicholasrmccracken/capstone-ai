@@ -23,6 +23,53 @@ AI-powered GitHub repository analysis assistant that helps understand complex co
 ### Prerequisites
 - Python 3.9+, Node.js 18+, Java 8+ for Elasticsearch
 
+## Elasticsearch Setup
+
+RepoRover uses Elasticsearch as its vector database for storing and searching code embeddings. Follow these steps to set up Elasticsearch properly:
+
+### 1. Download Elasticsearch
+The project includes Elasticsearch 7.17.9 in the `backend/elasticsearch-7.17.9/` directory. If you need a different version:
+
+1. Visit https://www.elastic.co/downloads/past-releases/elasticsearch-7-17-9
+2. Download the ZIP for your platform (Windows users: choose the `.zip` file)
+3. Extract to `backend/elasticsearch-7.17.9/`
+
+### 2. Configure Elasticsearch
+Elasticsearch requires some basic configuration for this application:
+
+1. **Increase heap size** (recommended for better performance):
+   - Open `backend/elasticsearch-7.17.9/config/jvm.options`
+   - Set heap size: `-Xms512m` and `-Xmx1g`
+
+2. **Configure network settings** (optional but recommended for development):
+   - Open `backend/elasticsearch-7.17.9/config/elasticsearch.yml`
+   - Add: `network.host: 0.0.0.0` to allow connections from the app
+   - Add: `http.port: 9200` (default, matches the app config)
+
+3. **Security Configuration** (if using authentication):
+   - The app supports Elasticsearch authentication
+   - Set these in your `.env` file if needed:
+     ```
+     ES_HOST=http://localhost:9200
+     ES_USER=elastic
+     ES_PASSWORD=your_password
+     ```
+   - The app will automatically use these credentials if provided
+
+### 3. Start Elasticsearch
+- Windows: `cd backend && elasticsearch-7.17.9\bin\elasticsearch.bat`
+- Linux/Mac: `cd backend && ./elasticsearch-7.17.9/bin/elasticsearch`
+
+**Troubleshooting:**
+- If you get JVM errors, ensure Java 8+ is installed and JAVA_HOME is set
+- If port 9200 is already in use, change the port in both `elasticsearch.yml` and your environment config
+- The first startup may take longer as Elasticsearch initializes
+
+### 4. Verify Installation
+Once running, visit http://localhost:9200 to see Elasticsearch status. You should see JSON output indicating it's running.
+
+## Quick Start
+
 ### 1. Setup Environment
 ```bash
 # Clone repo
