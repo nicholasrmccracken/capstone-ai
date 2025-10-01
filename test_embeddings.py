@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test Google Generative AI embeddings functionality."""
+"""Test OpenAI embeddings functionality."""
 
 import os
 import sys
@@ -7,23 +7,23 @@ import sys
 # Add backend to path
 sys.path.insert(0, 'backend')
 
-from config import GOOGLE_API_KEY
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from config import OPENAI_API_KEY
+from langchain_openai import OpenAIEmbeddings
 
-print("=== Testing Google Generative AI Embeddings ===")
-print(f"Google API Key configured: {'✓' if GOOGLE_API_KEY else '✗'}")
+print("=== Testing OpenAI Embeddings ===")
+print(f"OpenAI API Key configured: {'✓' if OPENAI_API_KEY else '✗'}")
 print()
 
-if not GOOGLE_API_KEY:
-    print("❌ GOOGLE_API_KEY not found. Please check your .env file.")
+if not OPENAI_API_KEY:
+    print("❌ OPENAI_API_KEY not found. Please check your .env file.")
     sys.exit(1)
 
 # Test embedding initialization
 print("1. Testing embedding initialization:")
 try:
-    embeddings_model = GoogleGenerativeAIEmbeddings(
-        model="models/embedding-001",
-        google_api_key=GOOGLE_API_KEY
+    embeddings_model = OpenAIEmbeddings(
+        model="text-embedding-ada-002",
+        api_key=OPENAI_API_KEY
     )
     print("   ✅ Embeddings model initialized successfully")
 except Exception as e:

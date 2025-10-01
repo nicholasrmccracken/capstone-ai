@@ -3,10 +3,10 @@ flask-cors
 requests
 langchain
 langchain-text-splitters
-langchain-google-genai==1.0.10
+langchain-openai
 langchain-community
 elasticsearch==7.5.1
 python-dotenv
-google-generativeai==0.7.2
+
 langchain-core
 langsmith

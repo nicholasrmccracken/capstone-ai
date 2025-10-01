@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Test Google Gemini import."""
+"""Test OpenAI import."""
 
 try:
-    from langchain_google_genai import GoogleGenerativeAIEmbeddings
-    print("✅ SUCCESS: Google Generative AI embeddings imported successfully!")
+    from langchain_openai import OpenAIEmbeddings
+    print("✅ SUCCESS: OpenAI embeddings imported successfully!")
 except Exception as e:
-    print(f"❌ FAILED: Google Generative AI not available ({e})")
+    print(f"❌ FAILED: OpenAI not available ({e})")
 
 try:
-    from google.generativeai import configure, embed_content
-    print("✅ SUCCESS: Google AI SDK imported successfully!")
+    import openai
+    print("✅ SUCCESS: OpenAI SDK imported successfully!")
 except Exception as e:
-    print(f"❌ FAILED: Google AI SDK not available ({e})")
+    print(f"❌ FAILED: OpenAI SDK not available ({e})")
