@@ -91,7 +91,11 @@ export default function Chat() {
     e.preventDefault();
     if (!url.trim()) return;
 
-    setMessages((prev) => [...prev, { sender: "user", text: url }]);
+      if (githubRegex.test(url)) {
+        setMessages((prev) => [
+          ...prev,
+          { sender: "bot", text: "✅ Processing repository ingestion..." },
+        ]);
 
     if (githubRegex.test(url)) {
       const trimmedUrl = url.trim();
@@ -107,42 +111,37 @@ export default function Chat() {
       ]);
       try {
         const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
-        const response = await fetch(`${backendUrl}/api/ingest`, {
+        const response = await fetch(`${backendUrl}/api/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ github_url: trimmedUrl }),
         });
         const data = await response.json();
-        setMessages((prev) => [
-          ...prev,
-          {
-            sender: "bot",
-            text:
-              data.status === "started"
-                ? "🚀 Ingestion started! Please wait while we process the repository."
-                : `⚠️ Error: ${data.message || "Failed to start ingestion."}`,
-          },
-        ]);
+
+        if (data.status === "success") {
+          let answerText = data.answer;
+          if (data.chunks_used > 0) {
+            answerText += `\n\n📊 Used ${data.chunks_used} code chunks from repositories: ${data.repos.join(", ")}`;
+          }
+          setMessages((prev) => [
+            ...prev,
+            { sender: "bot", text: answerText },
+          ]);
+        } else {
+          setMessages((prev) => [
+            ...prev,
+            { sender: "bot", text: `❌ ${data.message || "Error processing question"}` },
+          ]);
+        }
       } catch (error) {
         setMessages((prev) => [
           ...prev,
-          {
-            sender: "bot",
-            text: "❌ Error connecting to backend. Please try again later.",
-          },
+          { sender: "bot", text: "❌ Error connecting to backend. Please try again later." },
         ]);
       }
-    } else {
-      setMessages((prev) => [
-        ...prev,
-        {
-          sender: "bot",
-          text: "❌ That doesn’t look like a valid GitHub repository. Please try again.",
-        },
-      ]);
     }
 
-    setUrl("");
+    setIsLoading(false);
   };
 
   const handleChatSubmit = async (e: React.FormEvent) => {

@@ -1,3 +1,10 @@
+"""
+Ingestion pipeline for processing GitHub repositories.
+
+This module handles the ingestion of code from GitHub repositories into Elasticsearch,
+including text splitting, embedding generation, and indexing for semantic search.
+"""
+
 from github_utils import get_repo_files, get_file_content
 from langchain_community.document_loaders import TextLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -11,7 +18,7 @@ try:
 except ImportError:
     RecursiveJsonSplitter = None
 from elasticsearch import Elasticsearch
-from config import ES_HOST, ES_USER, ES_PASSWORD, GOOGLE_API_KEY
+from config import ES_HOST, ES_USER, ES_PASSWORD, OPENAI_API_KEY
 import json
 import hashlib
 import time
@@ -21,29 +28,47 @@ import os
 from io import StringIO
 from typing import List, Dict, Any
 
-# Mock embeddings for testing when Google Generative AI has compatibility issues
-class MockGoogleGenerativeAIEmbeddings:
-    """Mock embeddings class for testing when Google Generative AI has compatibility issues."""
+# Configuration for the Elasticsearch index used to store code chunks
+INDEX_NAME = "repo_chunks"  # Name of the Elasticsearch index
+EMBEDDING_DIM = 1536  # Dimensionality of OpenAI ada-002 embeddings
+INDEX_DEFINITION = {
+    "mappings": {
+        "properties": {
+            "repo_owner": {"type": "keyword"},      # GitHub repository owner
+            "repo_name": {"type": "keyword"},       # GitHub repository name
+            "file_path": {"type": "keyword"},       # Path to the file within the repo
+            "content": {"type": "text"},            # Actual code/content of the chunk
+            "metadata": {"type": "object"},         # Additional metadata from text splitting
+            "embedding": {"type": "dense_vector", "dims": EMBEDDING_DIM},  # Vector embedding for semantic search
+            "chunk_id": {"type": "keyword"},        # Unique identifier for the chunk
+            "timestamp": {"type": "date", "format": "epoch_second"}  # When the chunk was indexed
+        }
+    }
+}
 
-    def __init__(self, model="models/embedding-001", google_api_key=None):
+# Mock embeddings for testing when OpenAI has compatibility issues
+class MockOpenAIEmbeddings:
+    """Mock embeddings class for testing when OpenAI has compatibility issues."""
+
+    def __init__(self, model="text-embedding-ada-002", api_key=None):
         self.model = model
-        self.google_api_key = google_api_key
+        self.api_key = api_key
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
         """Generate mock embeddings for testing."""
-        return [[random.random() for _ in range(768)] for _ in texts]
+        return [[random.random() for _ in range(1536)] for _ in texts]  # ada-002 is 1536
 
     def embed_query(self, text: str) -> List[float]:
         """Generate mock embedding for a single query."""
-        return [random.random() for _ in range(768)]
+        return [random.random() for _ in range(1536)]
 
-# Try to import Google Generative AI, fall back to mock if it fails
+# Try to import OpenAI, fall back to mock if it fails
 try:
-    from langchain_google_genai import GoogleGenerativeAIEmbeddings
-    print("✅ Using real Google Generative AI embeddings")
+    from langchain_openai import OpenAIEmbeddings
+    print("Using real OpenAI embeddings")
 except Exception as e:
-    print(f"⚠️  Google Generative AI not available ({e}), using mock embeddings for testing")
-    GoogleGenerativeAIEmbeddings = MockGoogleGenerativeAIEmbeddings
+    print(f"Warning: OpenAI not available ({e}), using mock embeddings for testing")
+    OpenAIEmbeddings = MockOpenAIEmbeddings
 
 def generate_chunk_id(owner: str, repo: str, file_path: str, content: str) -> str:
     """Generate a unique ID for a code chunk based on repository and content."""
@@ -57,6 +82,44 @@ def get_elasticsearch_client():
         basic_auth=(ES_USER, ES_PASSWORD),
         verify_certs=False
     )
+
+def ensure_index(es, recreate_if_invalid=False):
+    """Ensure the target index exists with the expected mapping."""
+    try:
+        if not es.indices.exists(index=INDEX_NAME):
+            if recreate_if_invalid:
+                es.indices.create(index=INDEX_NAME, body=INDEX_DEFINITION)
+                return True
+            return False
+
+        mapping = es.indices.get_mapping(index=INDEX_NAME)
+        properties = mapping.get(INDEX_NAME, {}).get('mappings', {}).get('properties', {})
+        embedding_field = properties.get('embedding')
+
+        if not embedding_field:
+            if recreate_if_invalid:
+                es.indices.put_mapping(index=INDEX_NAME, body={
+                    'properties': {
+                        'embedding': {'type': 'dense_vector', 'dims': EMBEDDING_DIM}
+                    }
+                })
+                return True
+            return False
+
+        if embedding_field.get('type') != 'dense_vector' or embedding_field.get('dims') != EMBEDDING_DIM:
+            if recreate_if_invalid:
+                print("Detected incompatible mapping for 'embedding'; recreating index.")
+                es.indices.delete(index=INDEX_NAME)
+                es.indices.create(index=INDEX_NAME, body=INDEX_DEFINITION)
+                return True
+            return False
+
+        return True
+    except Exception as exc:
+        if recreate_if_invalid:
+            raise
+        print(f"Warning: Unable to verify Elasticsearch index mapping: {exc}")
+        return False
 
 def search_similar_chunks(query: str, repo_filter: str = None, top_k: int = 5) -> List[Dict[str, Any]]:
     """
@@ -73,57 +136,67 @@ def search_similar_chunks(query: str, repo_filter: str = None, top_k: int = 5) -
     try:
         es = get_elasticsearch_client()
 
-        # Generate embedding for the query
-        if not GOOGLE_API_KEY:
-            raise ValueError("GOOGLE_API_KEY not found")
+        if not es.indices.exists(index=INDEX_NAME):
+            print(f"Warning: Elasticsearch index '{INDEX_NAME}' not found.")
+            return []
 
-        embeddings_model = GoogleGenerativeAIEmbeddings(
-            model="models/embedding-001",
-            google_api_key=GOOGLE_API_KEY
-        )
+        should_clauses: List[Dict[str, Any]] = []
+        query_embedding = None
 
-        query_embedding = embeddings_model.embed_query(query)
+        if OPENAI_API_KEY:
+            if ensure_index(es, recreate_if_invalid=False):
+                embeddings_model = OpenAIEmbeddings(
+                    model="text-embedding-ada-002",
+                    api_key=OPENAI_API_KEY
+                )
+                query_embedding = embeddings_model.embed_query(query)
+                should_clauses.append({
+                    "script_score": {
+                        "query": {
+                            "bool": {
+                                "filter": [
+                                    {"exists": {"field": "embedding"}}
+                                ]
+                            }
+                        },
+                        "script": {
+                            "source": "cosineSimilarity(params.query_vector, 'embedding') + 1.0",
+                            "params": {"query_vector": query_embedding}
+                        }
+                    }
+                })
+            else:
+                print("Warning: Dense vector mapping unavailable; using keyword search only.")
+        else:
+            print("Warning: OPENAI_API_KEY not found. Using keyword search only.")
 
-        # Build search query
+        should_clauses.append({
+            "multi_match": {
+                "query": query,
+                "fields": ["content", "file_path", "repo_name"]
+            }
+        })
+
         search_body = {
             "size": top_k,
             "query": {
                 "bool": {
-                    "should": [
-                        {
-                            "script_score": {
-                                "query": {"match_all": {}},
-                                "boost": 0.7,
-                                "script": {
-                                    "source": "cosineSimilarity(params.query_vector, 'embedding') + 1.0",
-                                    "params": {"query_vector": query_embedding}
-                                }
-                            }
-                        },
-                        {
-                            "multi_match": {
-                                "query": query,
-                                "fields": ["content", "file_path", "repo_name"],
-                                "boost": 0.3
-                            }
-                        }
-                    ]
+                    "should": should_clauses,
+                    "minimum_should_match": 1
                 }
             }
         }
 
-        # Add repository filter if specified
         if repo_filter:
             owner, repo = repo_filter.split("/")
-            search_body["query"]["bool"]["filter"] = [
+            search_body["query"]["bool"].setdefault("filter", [])
+            search_body["query"]["bool"]["filter"].extend([
                 {"term": {"repo_owner": owner}},
                 {"term": {"repo_name": repo}}
-            ]
+            ])
 
-        # Execute search
-        response = es.search(index="repo_chunks", body=search_body)
+        response = es.search(index=INDEX_NAME, body=search_body)
 
-        # Format results
         results = []
         for hit in response["hits"]["hits"]:
             source = hit["_source"]
@@ -143,58 +216,110 @@ def search_similar_chunks(query: str, repo_filter: str = None, top_k: int = 5) -
         print(f"Error searching chunks: {str(e)}")
         return []
 
-# langchain splitter documentation: https://python.langchain.com/docs/concepts/text_splitters/
-def ingest_github_repo(github_url):
+
+"""
+Main ingestion function that processes a GitHub repository into Elasticsearch.
+
+This function fetches all files from the specified GitHub repository, splits them into
+manageable chunks using language-appropriate text splitters, generates embeddings,
+and indexes everything into Elasticsearch for later semantic search.
+
+See: https://python.langchain.com/docs/concepts/text_splitters/
+"""
+def ingest_github_repo(github_url: str):
+    # Extract repository owner and name from GitHub URL
     owner, repo = github_url.rstrip("/").split("/")[-2:]
+
+    # Initialize Elasticsearch client and ensure the index exists with correct mapping
+    es = get_elasticsearch_client()
+    try:
+        ensure_index(es, recreate_if_invalid=True)
+    except Exception as exc:
+        print(f"Error ensuring Elasticsearch index: {exc}")
+        return
+
+    # Remove existing chunks for this repository to avoid duplicates and stale data
+    try:
+        delete_query = {
+            "query": {
+                "bool": {
+                    "must": [
+                        {"term": {"repo_owner": owner}},
+                        {"term": {"repo_name": repo}}
+                    ]
+                }
+            }
+        }
+        es.delete_by_query(index=INDEX_NAME, body=delete_query, refresh=True)
+        print(f"Cleared existing chunks for {owner}/{repo}")
+    except Exception as e:
+        print(f"Warning: Failed to clear existing chunks: {e}")
+
+    if not OPENAI_API_KEY:
+        print("Warning: OPENAI_API_KEY not found. Skipping embeddings.")
+        return
+
+    # Initialize the OpenAI embeddings model for generating vector representations
+    embeddings_model = OpenAIEmbeddings(
+        model="text-embedding-ada-002",
+        api_key=OPENAI_API_KEY
+    )
+
+    # Fetch all file paths from the GitHub repository
     files = get_repo_files(owner, repo)
+
+    # Process each file in the repository
     for file_path in files:
+        # Retrieve the full content of the current file
         content = get_file_content(owner, repo, file_path)
-        # Markdown
+        chunks = []  # Will hold the split document chunks
+
+        # Split the file content into chunks based on file type for optimal processing
+        # Different file types need different chunking strategies to preserve semantic meaning
+
+        # For Markdown files: Use hierarchical splitting that respects document structure
+        # First split on headers (# ## ###) to keep sections together, then by size
         if file_path.endswith(".md") and MarkdownHeaderTextSplitter is not None:
             headers_to_split_on = [("#", "Header 1"), ("##", "Header 2"), ("###", "Header 3")]
             splitter = MarkdownHeaderTextSplitter(headers_to_split_on)
-            md_chunks = splitter.split_text(content)
-            # Optionally further split large markdown chunks
+            md_chunks = splitter.split_text(content)  # Creates chunks preserving header hierarchy
             char_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-            chunks = char_splitter.split_documents(md_chunks)
-        # JSON
+            chunks = char_splitter.split_documents(md_chunks)  # Further split large sections
+        # For JSON files: Use specialized JSON splitter that preserves object structure
+        # Attempts structured splitting first, falls back to text splitting if JSON parsing fails
         elif file_path.endswith(".json") and RecursiveJsonSplitter is not None:
             import json
             try:
-                json_data = json.loads(content)
+                json_data = json.loads(content)  # Parse as JSON object
                 splitter = RecursiveJsonSplitter(max_chunk_size=1000)
-                chunks = splitter.create_documents(texts=[json_data])
+                chunks = splitter.create_documents(texts=[json_data])  # Structured chunking preserving JSON structure
             except Exception:
-                # fallback to text splitting if JSON is invalid
-                # Create temporary file for TextLoader
+                # JSON parsing failed, treat as text file and chunk by size
                 with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as temp_file:
                     temp_file.write(content)
                     temp_file_path = temp_file.name
-
-                    try:
-                        loader = TextLoader(temp_file_path)
-                        docs = loader.load()
-                        splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-                        chunks = splitter.split_documents(docs)
-                    finally:
-                        # Clean up temporary file
-                        os.unlink(temp_file_path)
-        elif file_path.endswith(".json") and RecursiveJsonSplitter is None:
-            # Create temporary file for TextLoader if JSON splitter not available
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as temp_file:
-                temp_file.write(content)
-                temp_file_path = temp_file.name
-
                 try:
                     loader = TextLoader(temp_file_path)
                     docs = loader.load()
                     splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
                     chunks = splitter.split_documents(docs)
                 finally:
-                    # Clean up temporary file
                     os.unlink(temp_file_path)
-        # Supported code/text types
+        # For JSON files without RecursiveJsonSplitter: Use text-based chunking as fallback
+        elif file_path.endswith(".json") and RecursiveJsonSplitter is None:
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as temp_file:
+                temp_file.write(content)
+                temp_file_path = temp_file.name
+            try:
+                loader = TextLoader(temp_file_path)
+                docs = loader.load()
+                splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+                chunks = splitter.split_documents(docs)
+            finally:
+                os.unlink(temp_file_path)
         else:
+            # For programming languages: Use language-aware chunking that respects code structure
+            # Looks up file extension to determine language-specific splitting rules
             ext_language_map = {
                 ".py": Language.PYTHON,
                 ".js": Language.JS,
@@ -227,38 +352,28 @@ def ingest_github_repo(github_url):
             ext = next((e for e in ext_language_map if file_path.endswith(e)), None)
             if ext:
                 language = ext_language_map[ext]
+                # Use language-specific splitter that respects syntax (e.g., function boundaries, classes)
                 splitter = RecursiveCharacterTextSplitter.from_language(language=language, chunk_size=1000, chunk_overlap=100)
             else:
+                # Unknown file type: Use generic character-based chunking
                 splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
 
-            # Use splitter directly on content for text files to avoid encoding issues
             from langchain.schema import Document
             doc = Document(page_content=content, metadata={"source": file_path})
-            chunks = splitter.split_documents([doc])
-        # Generate embeddings and index in Elasticsearch
+            chunks = splitter.split_documents([doc])  # Standard chunking with 1000 char chunks and 100 char overlap
+
         try:
-            # Initialize embeddings
-            if not GOOGLE_API_KEY:
-                print(f"Warning: GOOGLE_API_KEY not found. Skipping embeddings for {file_path}")
+            # Skip files that didn't produce any chunks (e.g., empty files)
+            if not chunks:
                 continue
 
-            embeddings_model = GoogleGenerativeAIEmbeddings(
-                model="models/embedding-001",
-                google_api_key=GOOGLE_API_KEY
-            )
-
-            # Generate embeddings for chunks
+            # Extract text content from chunks for batch embedding
             chunk_texts = [chunk.page_content for chunk in chunks]
+
+            # Generate vector embeddings for all chunks at once using OpenAI
             embeddings = embeddings_model.embed_documents(chunk_texts)
 
-            # Initialize Elasticsearch
-            es = Elasticsearch(
-                hosts=[ES_HOST],
-                basic_auth=(ES_USER, ES_PASSWORD),
-                verify_certs=False
-            )
-
-            # Index chunks in Elasticsearch
+            # Index each chunk into Elasticsearch with all metadata and embedding
             for chunk, embedding in zip(chunks, embeddings):
                 doc = {
                     "repo_owner": owner,
@@ -270,10 +385,15 @@ def ingest_github_repo(github_url):
                     "chunk_id": generate_chunk_id(owner, repo, file_path, chunk.page_content),
                     "timestamp": int(time.time())
                 }
-                es.index(index="repo_chunks", body=doc)
+                es.index(index=INDEX_NAME, id=doc["chunk_id"], body=doc)
 
             print(f"Successfully indexed {len(chunks)} chunks from {file_path}")
-
         except Exception as e:
             print(f"Error processing {file_path}: {str(e)}")
             continue
+
+    # Refresh the index to make all newly indexed documents immediately searchable
+    try:
+        es.indices.refresh(index=INDEX_NAME)
+    except Exception as refresh_error:
+        print(f"Warning: Failed to refresh index: {refresh_error}")
