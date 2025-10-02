@@ -1,9 +1,24 @@
 "use client";
-import { useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 interface TreeStructure {
   [key: string]: TreeStructure | string;
 }
+
+const getAllDirectoryPaths = (
+  structure: TreeStructure,
+  parentPath: string[] = []
+): string[] => {
+  let paths: string[] = [];
+  for (const [name, value] of Object.entries(structure)) {
+    if (typeof value === "object" && value !== null) {
+      const currentPath = [...parentPath, name];
+      paths.push(currentPath.join("/"));
+      paths = paths.concat(getAllDirectoryPaths(value, currentPath));
+    }
+  }
+  return paths;
+};
 
 export default function Chat() {
   const [url, setUrl] = useState("");
@@ -20,9 +35,12 @@ export default function Chat() {
   const [viewMode, setViewMode] = useState<"tree" | "file">("tree");
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [repoDetails, setRepoDetails] = useState({ owner: "", repo: "", defaultBranch: "" });
   const [isLoadingTree, setIsLoadingTree] = useState(false);
   const [treeError, setTreeError] = useState<string | null>(null);
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
+  const treeContainerRef = useRef<HTMLDivElement>(null);
 
   // Regex to validate GitHub repo URLs
   const githubRegex =
@@ -36,6 +54,8 @@ export default function Chat() {
     setViewMode("tree");
     setFileContent(null);
     setSelectedFile(null);
+    setSelectedItems([]);
+    setExpandedNodes(new Set());
     try {
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
       const response = await fetch(`${backendUrl}/api/get_tree`, {
@@ -167,16 +187,36 @@ export default function Chat() {
     return current || {};
   };
 
-  const handleFolderClick = (name: string) => {
-    setCurrentPath([...currentPath, name]);
+  const handleFolderClick = (name: string, currentParentPath: string[], e: React.MouseEvent) => {
+    const itemPath = [...currentParentPath, name].join("/");
+    if (e.metaKey) {
+      setSelectedItems((prev) =>
+        prev.includes(itemPath) ? prev.filter((item) => item !== itemPath) : [...prev, itemPath]
+      );
+    } else if (e.detail === 2) {
+      setCurrentPath([...currentParentPath, name]);
+    } else if (e.detail === 1) {
+      setExpandedNodes((prev) => {
+        const newSet = new Set(prev);
+        if (newSet.has(itemPath)) {
+          newSet.delete(itemPath);
+        } else {
+          newSet.add(itemPath);
+        }
+        return newSet;
+      });
+    }
   };
 
   const handleBackClick = () => {
     if (viewMode === "file") {
       setViewMode("tree");
       setFileContent(null);
+      setSelectedFile(null);
     } else if (currentPath.length > 0) {
       setCurrentPath(currentPath.slice(0, -1));
+      setSelectedFile(null);
+      setSelectedItems([]);
     }
   };
 
@@ -197,40 +237,83 @@ export default function Chat() {
       const data = await response.json();
       setFileContent(data.content);
       setViewMode("file");
+      treeContainerRef.current?.scrollTo(0, 0);
     } catch (error) {
       console.error(error);
-      // Optionally add error message to UI
+      setMessages((prev) => [
+        ...prev,
+        { sender: "bot", text: `❌ Failed to fetch file content: ${error}` },
+      ]);
     }
   };
 
-  const handleFileClick = (name: string) => {
-    const filePath = [...currentPath, name].join("/");
+  const handleFileClick = (name: string, parentPath: string[], e: React.MouseEvent) => {
+    const filePath = [...parentPath, name].join("/");
+    if (e.metaKey) {
+      setSelectedItems((prev) =>
+        prev.includes(filePath) ? prev.filter((item) => item !== filePath) : [...prev, filePath]
+      );
+    } else {
+      setSelectedItems([filePath]);
     setSelectedFile(filePath);
     fetchFileContent(filePath);
+    }
   };
 
-  const TreeNode: React.FC<{ structure: TreeStructure; level?: number }> = ({ structure, level = 0 }) => {
-    const entries = Object.entries(structure).sort(([a], [b]) => a.localeCompare(b));
+  // Toggle between expanding and collapsing all nodes
+  const handleToggleExpandAll = () => {
+    if (!treeStructure) return;
+    const allPaths = getAllDirectoryPaths(getCurrentStructure(), currentPath);
+    // If not all nodes are expanded, expand them all. Otherwise, collapse them.
+    if (expandedNodes.size < allPaths.length) {
+      setExpandedNodes(new Set(allPaths));
+    } else {
+      setExpandedNodes(new Set());
+    }
+  };
+
+  const TreeNode = ({ structure, parentPath = [], prefix = "" }: {
+    structure: TreeStructure;
+    parentPath?: string[];
+    prefix?: string;
+  }) => {
+    const entries = Object.entries(structure);
     return (
       <>
         {entries.map(([name, value], index) => {
           const isLast = index === entries.length - 1;
-          const branch = isLast ? '└── ' : '├── ';
-          const isDir = typeof value === "object";
+          const connector = isLast ? '└─ ' : '├─ ';
+          const isDir = typeof value === "object" && value !== null;
+          const itemPath = [...parentPath, name].join("/");
+          const isExpanded = expandedNodes.has(itemPath);
+
           return (
-            <div key={name} style={{ paddingLeft: `${level * 20}px` }} className="cursor-pointer">
-              {branch}
+            <div key={name} className="cursor-pointer tree-node" style={{ marginBottom: '0.1rem' }}>
+              <div className="flex items-center">
+                <div className="flex font-mono whitespace-pre ascii-connector">
+                  {prefix.match(/.{1,3}/g)?.map((segment, i) => (
+                    <span key={i}>{segment}</span>
+                  ))}
+                  <span>{connector}</span>
+                </div>
               {isDir ? (
-                <span onClick={() => handleFolderClick(name)} className="text-blue-400 hover:underline">
-                  {name}/
+                  <span onClick={(e) => handleFolderClick(name, parentPath, e)}
+                    className={`hover:underline ${selectedItems.includes(itemPath) ? "bg-blue-600 text-blue-200 px-1 rounded" : "text-blue-400"}`}>
+                    {name}/ {isExpanded ? '[-]' : '[+]'}
                 </span>
               ) : (
-                <span
-                  onClick={() => handleFileClick(name)}
-                  className={`hover:underline ${selectedFile === [...currentPath, name].join("/") ? "bg-yellow-600 text-white px-1 rounded" : ""}`}
-                >
+                  <span onClick={(e) => handleFileClick(name, parentPath, e)}
+                    className={`hover:underline ${selectedItems.includes(itemPath) || selectedFile === itemPath ? "bg-yellow-600 text-white px-1 rounded" : ""}`}>
                   {name}
                 </span>
+                )}
+              </div>
+              {isDir && isExpanded && (
+                <TreeNode
+                  structure={value as TreeStructure}
+                  parentPath={[...parentPath, name]}
+                  prefix={prefix + (isLast ? '   ' : '├  ')}
+                />
               )}
             </div>
           );
@@ -253,65 +336,70 @@ export default function Chat() {
       </pre>
     );
   };
-const getCurrentDisplayPath = () => {
-    if (viewMode === "tree") {
-      return `${repoDetails.repo}${currentPath.length > 0 ? ` / ${currentPath.join('/')}` : ''}`;
-    } else {
-      return `${repoDetails.repo} / ${selectedFile}`;
-    }
+
+  const renderTree = () => {
+    const rootName = currentPath.length === 0 ? repoDetails.repo : currentPath[currentPath.length - 1];
+    return (
+      <div className="text-sm text-gray-300 font-mono">
+        <div className="mb-1">
+          <span>{rootName}</span>
+        </div>
+        <TreeNode structure={getCurrentStructure()} parentPath={currentPath} />
+      </div>
+    );
   };
+  
+  // Determine whether all nodes are expanded to determine the button's symbol
+  const { allDirectoryPaths, isFullyExpanded } = useMemo(() => {
+    if (!treeStructure) return { allDirectoryPaths: [], isFullyExpanded: false };
+    const allPaths = getAllDirectoryPaths(getCurrentStructure(), currentPath);
+    const fullyExpanded = allPaths.length > 0 && expandedNodes.size === allPaths.length;
+    return { allDirectoryPaths: allPaths, isFullyExpanded: fullyExpanded };
+  }, [treeStructure, currentPath, expandedNodes]);
 
   return (
     <main className="flex flex-col items-center h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white p-4 gap-4">
       <h2 className="text-4xl font-bold text-blue-400 drop-shadow-md">
         RepoRover Chat
       </h2>
-
-      {/* Main Content Area */}
       <div className="flex w-full max-w-7xl flex-1 gap-4 overflow-hidden">
-        {/* Left Panel: Input Form + Repository Structure */}
         <div className="w-1/2 bg-gray-900/70 border border-gray-700 p-6 rounded-xl shadow-lg flex flex-col">
           <form onSubmit={handleSubmit} className="flex gap-2 mb-4">
-            <input
-              type="text"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="Enter a GitHub repository URL"
-              className="flex-1 p-3 border border-gray-600 bg-gray-800 text-white rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <button
-              type="submit"
-              className="px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-all"
-            >
-              Send
-            </button>
+            <input type="text" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Enter a GitHub repository URL"
+              className="flex-1 p-3 border border-gray-600 bg-gray-800 text-white rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+            <button type="submit" className="px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-all">Send</button>
           </form>
-          <h3 className="text-xl font-bold mb-2 text-gray-300">Repository Structure</h3>
-          {treeStructure && (
-            <p className="mb-2 text-sm text-gray-400 truncate">
-              {getCurrentDisplayPath()}
-            </p>
+
+          {/* --- MODIFIED: Heading and new toggle button are on the same line --- */}
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="text-xl font-bold text-gray-300">Repository Structure</h3>
+            {treeStructure && viewMode === 'tree' && allDirectoryPaths.length > 0 && (
+              <button
+                onClick={handleToggleExpandAll}
+                className="font-mono text-lg text-gray-400 hover:text-white px-2"
+                title="Toggle Expand/Collapse All"
+              >
+                {isFullyExpanded ? '[-]' : '[+]'}
+              </button>
           )}
-          <div className="flex-1 overflow-auto bg-gray-900 p-4 rounded-md">
+          </div>
+
+          <div ref={treeContainerRef} className="flex-1 overflow-auto bg-gray-900 p-4 rounded-md">
             {isLoadingTree && <p className="text-gray-400">Loading tree...</p>}
             {treeError && <p className="text-red-400">{treeError}</p>}
             {treeStructure && (
               <>
                 {(currentPath.length > 0 || viewMode === "file") && (
+                  <div className="mb-4">
                   <button
                     onClick={handleBackClick}
-                    className="mb-4 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
+                      className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm"
                   >
                     Back
                   </button>
-                )}
-                {viewMode === "tree" ? (
-                  <div className="text-sm text-gray-300 font-mono">
-                    <TreeNode structure={getCurrentStructure()} level={0} />
                   </div>
-                ) : (
-                  renderFileContentWithLines()
                 )}
+                {viewMode === 'tree' ? renderTree() : renderFileContentWithLines()}
               </>
             )}
             {!isLoadingTree && !treeError && !treeStructure && (
@@ -325,30 +413,30 @@ const getCurrentDisplayPath = () => {
           <div className="flex-1 bg-gray-900/70 border border-gray-700 p-6 rounded-xl shadow-lg overflow-y-auto">
             {messages.map((msg, index) => (
               <div
-                key={index}
-                className={`mb-3 p-3 rounded-lg max-w-[85%] ${
-                  msg.sender === "bot"
-                    ? "bg-gray-700 text-gray-200 self-start"
-                    : "bg-blue-600 text-white self-end"
+              key={index}
+              className={`mb-3 p-3 rounded-lg max-w-[85%] ${
+                msg.sender === "bot"
+                ? "bg-gray-700 text-gray-200 self-start"
+                : "bg-blue-600 text-white self-end"
                 }`}
-              >
+                >
                 {msg.text}
               </div>
             ))}
           </div>
           <form onSubmit={handleChatSubmit} className="flex gap-2 mt-4">
             <input
-              type="text"
-              value={inputMessage}
-              onChange={(e) => setInputMessage(e.target.value)}
+            type="text"
+            value={inputMessage}
+            onChange={(e) => setInputMessage(e.target.value)}
               placeholder={repoUrl ? "Ask a question about the repo..." : "First enter a repo URL above"}
               className="flex-1 p-3 border border-gray-600 bg-gray-800 text-white rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               disabled={!repoUrl}
-            />
+              />
             <button
-              type="submit"
-              className="px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-all"
-              disabled={!repoUrl}
+            type="submit"
+            className="px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-all"
+            disabled={!repoUrl}
             >
               Send
             </button>
