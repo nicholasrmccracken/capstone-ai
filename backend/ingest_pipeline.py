@@ -340,7 +340,6 @@ def ingest_github_repo(github_url: str):
                 ".pl": Language.PERL,
                 ".hs": Language.HASKELL,
                 ".ps1": Language.POWERSHELL,
-                ".vb": Language.VISUALBASIC6,
                 ".html": Language.HTML,
                 ".tex": Language.LATEX,
                 ".md": Language.MARKDOWN,
