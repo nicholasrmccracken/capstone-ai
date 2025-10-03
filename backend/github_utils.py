@@ -1,47 +1,83 @@
 import os
-import requests
+from github import Github
+from config import GITHUB_TOKEN
 
-def _get_default_branch(owner, repo, headers):
-
-    url = f"https://api.github.com/repos/{owner}/{repo}"
-    resp = requests.get(url, headers=headers)
-    resp.raise_for_status()  # Will raise an error if the repo doesn't exist
-    return resp.json()["default_branch"]
+def _get_repo(owner, repo):
+    """Get repository object using PyGithub."""
+    g = Github(GITHUB_TOKEN if GITHUB_TOKEN else None)
+    return g.get_repo(f"{owner}/{repo}")
 
 def get_repo_files(owner, repo):
-    # sample call to see expected output format of file tree
-    # https://api.github.com/repos/elipaulman/GOVS/git/trees/main?recursive=1
-    headers = {}
-    token = os.getenv("GITHUB_TOKEN")
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
+    """
+    Get all text/code file paths from a GitHub repository using PyGithub.
 
-    try:
-        branch = _get_default_branch(owner, repo, headers)
-    except requests.exceptions.HTTPError:
-        raise
+    Filters out binary files (images, videos, etc.) to avoid processing issues.
+    PyGithub handles rate limiting automatically and is more reliable than raw requests.
+    """
+    repo_obj = _get_repo(owner, repo)
 
-    url = f"https://api.github.com/repos/{owner}/{repo}/git/trees/{branch}?recursive=1"
-    resp = requests.get(url, headers=headers)
-    resp.raise_for_status()
-    tree = resp.json()["tree"]
-    return [item["path"] for item in tree if item["type"] == "blob"]
+    # Use recursive=True to get all files (including in subdirectories)
+    contents = repo_obj.get_contents("")
+    files = []
+
+    # File extensions to skip (binary/image/video files that aren't useful for code search)
+    BINARY_EXTENSIONS = {
+        # Images
+        '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.ico', '.svg',
+        '.tiff', '.tif', '.psd', '.ai', '.eps', '.indd',
+        # Videos
+        '.mp4', '.avi', '.mov', '.wmv', '.flv', '.webm', '.mkv', '.3gp',
+        # Audio
+        '.mp3', '.wav', '.flac', '.aac', '.ogg', '.wma', '.m4a',
+        # Archives
+        '.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.xz',
+        # Documents (complex binaries)
+        '.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx',
+        # Other binaries
+        '.exe', '.dll', '.so', '.dylib', '.app', '.deb', '.rpm',
+        '.iso', '.dmg', '.pkg', '.appimage'
+    }
+
+    def _walk_contents(contents):
+        for content in contents:
+            if content.type == "file":
+                file_path = content.path.lower()
+                # Skip binary files
+                if not any(file_path.endswith(ext) for ext in BINARY_EXTENSIONS):
+                    files.append(content.path)
+            elif content.type == "dir":
+                # Skip common non-code directories
+                skip_dirs = {'node_modules', '.git', '__pycache__', '.next', 'build', 'dist', '.venv', 'venv', 'env'}
+                if content.name not in skip_dirs:
+                    try:
+                        dir_contents = repo_obj.get_contents(content.path)
+                        _walk_contents(dir_contents)
+                    except Exception:
+                        # Skip directories we can't access (might be binary/symlinks)
+                        pass
+
+    _walk_contents(contents)
+    return files
 
 def get_file_content(owner, repo, path):
-    # sample call to see expected output format of file content
-    # https://raw.githubusercontent.com/elipaulman/GOVS/main/README.md
-    headers = {}
-    token = os.getenv("GITHUB_TOKEN")
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-        
+    """
+    Get file content from GitHub using PyGithub.
+
+    This method handles binary files and encoding automatically.
+    """
+    repo_obj = _get_repo(owner, repo)
+
     try:
-        branch = _get_default_branch(owner, repo, headers)
-    except requests.exceptions.HTTPError:
-        raise
-    
-    url = f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}"
-    # The raw content URL doesn't use the auth header.
-    resp = requests.get(url)
-    resp.raise_for_status()
-    return resp.text
+        content_file = repo_obj.get_contents(path)
+        # PyGithub returns content as base64 encoded bytes
+        import base64
+        decoded_content = base64.b64decode(content_file.content)
+        # Assume text content and decode as UTF-8
+        # This will work for code files; binary files would need different handling
+        return decoded_content.decode('utf-8', errors='ignore')
+    except UnicodeDecodeError:
+        # If not decodable as text, return empty string
+        # For code search, we typically only want text files
+        return ""
+    except Exception as e:
+        raise ValueError(f"Could not fetch content for {owner}/{repo}/{path}: {str(e)}")

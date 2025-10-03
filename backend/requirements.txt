@@ -1,6 +1,8 @@
 flask
 flask-cors
 requests
+aiohttp
+tiktoken
 langchain
 langchain-text-splitters
 langchain-openai

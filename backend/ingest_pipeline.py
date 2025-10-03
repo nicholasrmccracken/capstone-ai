@@ -26,7 +26,16 @@ import random
 import tempfile
 import os
 from io import StringIO
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# Import tiktoken for accurate token counting
+try:
+    import tiktoken
+    TIKTOKEN_AVAILABLE = True
+except ImportError:
+    TIKTOKEN_AVAILABLE = False
+    print("Warning: tiktoken not available, using fallback token estimation")
 
 # Configuration for the Elasticsearch index used to store code chunks
 INDEX_NAME = "repo_chunks"  # Name of the Elasticsearch index
@@ -120,6 +129,128 @@ def ensure_index(es, recreate_if_invalid=False):
             raise
         print(f"Warning: Unable to verify Elasticsearch index mapping: {exc}")
         return False
+
+def process_file_chunks(owner: str, repo: str, file_path: str) -> Tuple[str, List[str], List[Dict]]:
+    """
+    Process a single file into chunks with their metadata.
+
+    Returns:
+        Tuple of (file_path, chunk_texts, chunk_metadata)
+    """
+    try:
+        # Retrieve the full content of the current file
+        content = get_file_content(owner, repo, file_path)
+        if not content:  # Skip empty files
+            return file_path, [], []
+
+        chunks = []  # Will hold the split document chunks
+        chunk_texts = []
+        chunk_metadata = []
+
+        # Split the file content into chunks based on file type for optimal processing
+        # Different file types need different chunking strategies to preserve semantic meaning
+
+        # For Markdown files: Use hierarchical splitting that respects document structure
+        # First split on headers (# ## ###) to keep sections together, then by size
+        if file_path.endswith(".md") and MarkdownHeaderTextSplitter is not None:
+            headers_to_split_on = [("#", "Header 1"), ("##", "Header 2"), ("###", "Header 3")]
+            splitter = MarkdownHeaderTextSplitter(headers_to_split_on)
+            md_chunks = splitter.split_text(content)  # Creates chunks preserving header hierarchy
+            char_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+            chunks = char_splitter.split_documents(md_chunks)  # Further split large sections
+        # For JSON files: Use specialized JSON splitter that preserves object structure
+        # Attempts structured splitting first, falls back to text splitting if JSON parsing fails
+        elif file_path.endswith(".json") and RecursiveJsonSplitter is not None:
+            import json
+            try:
+                json_data = json.loads(content)  # Parse as JSON object
+                splitter = RecursiveJsonSplitter(max_chunk_size=1000)
+                chunks = splitter.create_documents(texts=[json_data])  # Structured chunking preserving JSON structure
+            except Exception:
+                # JSON parsing failed, treat as text file and chunk by size
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as temp_file:
+                    temp_file.write(content)
+                    temp_file_path = temp_file.name
+                try:
+                    loader = TextLoader(temp_file_path)
+                    docs = loader.load()
+                    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+                    chunks = splitter.split_documents(docs)
+                finally:
+                    os.unlink(temp_file_path)
+        # For JSON files without RecursiveJsonSplitter: Use text-based chunking as fallback
+        elif file_path.endswith(".json") and RecursiveJsonSplitter is None:
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as temp_file:
+                temp_file.write(content)
+                temp_file_path = temp_file.name
+            try:
+                loader = TextLoader(temp_file_path)
+                docs = loader.load()
+                splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+                chunks = splitter.split_documents(docs)
+            finally:
+                os.unlink(temp_file_path)
+        else:
+            # For programming languages: Use language-aware chunking that respects code structure
+            # Looks up file extension to determine language-specific splitting rules
+            ext_language_map = {
+                ".py": Language.PYTHON,
+                ".js": Language.JS,
+                ".ts": Language.TS,
+                ".java": Language.JAVA,
+                ".go": Language.GO,
+                ".cs": Language.CSHARP,
+                ".cpp": Language.CPP,
+                ".c": Language.C,
+                ".php": Language.PHP,
+                ".rb": Language.RUBY,
+                ".rs": Language.RUST,
+                ".scala": Language.SCALA,
+                ".swift": Language.SWIFT,
+                ".sol": Language.SOL,
+                ".kt": Language.KOTLIN,
+                ".lua": Language.LUA,
+                ".pl": Language.PERL,
+                ".hs": Language.HASKELL,
+                ".ps1": Language.POWERSHELL,
+                ".html": Language.HTML,
+                ".tex": Language.LATEX,
+                ".md": Language.MARKDOWN,
+                ".proto": Language.PROTO,
+                ".rst": Language.RST,
+                ".cob": Language.COBOL,
+                ".ex": Language.ELIXIR,
+                ".exs": Language.ELIXIR,
+            }
+            ext = next((e for e in ext_language_map if file_path.endswith(e)), None)
+            if ext:
+                language = ext_language_map[ext]
+                # Use language-specific splitter that respects syntax (e.g., function boundaries, classes)
+                splitter = RecursiveCharacterTextSplitter.from_language(language=language, chunk_size=1000, chunk_overlap=100)
+            else:
+                # Unknown file type: Use generic character-based chunking
+                splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+
+            from langchain.schema import Document
+            doc = Document(page_content=content, metadata={"source": file_path})
+            chunks = splitter.split_documents([doc])  # Standard chunking with 1000 char chunks and 100 char overlap
+
+        # Skip files that didn't produce any chunks (e.g., empty files)
+        if not chunks:
+            return file_path, [], []
+
+        # Collect all chunks with their metadata
+        for chunk in chunks:
+            chunk_texts.append(chunk.page_content)
+            chunk_metadata.append(chunk.metadata)
+
+        print(f"Processed {len(chunks)} chunks from {file_path}")
+        return file_path, chunk_texts, chunk_metadata
+
+    except Exception as e:
+        print(f"Error processing {file_path}: {str(e)}")
+        return file_path, [], []
+
 
 def search_similar_chunks(query: str, repo_filter: str = None, top_k: int = 5) -> List[Dict[str, Any]]:
     """
@@ -221,8 +352,8 @@ def search_similar_chunks(query: str, repo_filter: str = None, top_k: int = 5) -
 Main ingestion function that processes a GitHub repository into Elasticsearch.
 
 This function fetches all files from the specified GitHub repository, splits them into
-manageable chunks using language-appropriate text splitters, generates embeddings,
-and indexes everything into Elasticsearch for later semantic search.
+manageable chunks using language-appropriate text splitters, generates embeddings in batches,
+and indexes everything into Elasticsearch using bulk API for better performance.
 
 See: https://python.langchain.com/docs/concepts/text_splitters/
 """
@@ -266,131 +397,149 @@ def ingest_github_repo(github_url: str):
     )
 
     # Fetch all file paths from the GitHub repository
-    files = get_repo_files(owner, repo)
+    try:
+        files = get_repo_files(owner, repo)
+        print(f"Found {len(files)} files in {owner}/{repo}")
+    except Exception as e:
+        print(f"Error fetching file list: {str(e)}")
+        return
 
-    # Process each file in the repository
-    for file_path in files:
-        # Retrieve the full content of the current file
-        content = get_file_content(owner, repo, file_path)
-        chunks = []  # Will hold the split document chunks
+    # Parallel Processing: Process multiple files concurrently within GitHub rate limits
+    # Use limited concurrency (2-3 threads) to respect GitHub's API rate limits
+    all_chunks = []
+    all_chunk_metadata = []  # Store (file_path, chunk_metadata) pairs
 
-        # Split the file content into chunks based on file type for optimal processing
-        # Different file types need different chunking strategies to preserve semantic meaning
+    # Use ThreadPoolExecutor with limited workers to respect GitHub API rate limits
+    max_workers = min(3, len(files))  # Limit to 3 concurrent workers maximum
+    print(f"Processing {len(files)} files with {max_workers} parallel threads...")
 
-        # For Markdown files: Use hierarchical splitting that respects document structure
-        # First split on headers (# ## ###) to keep sections together, then by size
-        if file_path.endswith(".md") and MarkdownHeaderTextSplitter is not None:
-            headers_to_split_on = [("#", "Header 1"), ("##", "Header 2"), ("###", "Header 3")]
-            splitter = MarkdownHeaderTextSplitter(headers_to_split_on)
-            md_chunks = splitter.split_text(content)  # Creates chunks preserving header hierarchy
-            char_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-            chunks = char_splitter.split_documents(md_chunks)  # Further split large sections
-        # For JSON files: Use specialized JSON splitter that preserves object structure
-        # Attempts structured splitting first, falls back to text splitting if JSON parsing fails
-        elif file_path.endswith(".json") and RecursiveJsonSplitter is not None:
-            import json
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all file processing tasks
+        future_to_file = {
+            executor.submit(process_file_chunks, owner, repo, file_path): file_path
+            for file_path in files
+        }
+
+        # Collect results as they complete
+        for future in as_completed(future_to_file):
+            file_path = future_to_file[future]
             try:
-                json_data = json.loads(content)  # Parse as JSON object
-                splitter = RecursiveJsonSplitter(max_chunk_size=1000)
-                chunks = splitter.create_documents(texts=[json_data])  # Structured chunking preserving JSON structure
-            except Exception:
-                # JSON parsing failed, treat as text file and chunk by size
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as temp_file:
-                    temp_file.write(content)
-                    temp_file_path = temp_file.name
-                try:
-                    loader = TextLoader(temp_file_path)
-                    docs = loader.load()
-                    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-                    chunks = splitter.split_documents(docs)
-                finally:
-                    os.unlink(temp_file_path)
-        # For JSON files without RecursiveJsonSplitter: Use text-based chunking as fallback
-        elif file_path.endswith(".json") and RecursiveJsonSplitter is None:
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as temp_file:
-                temp_file.write(content)
-                temp_file_path = temp_file.name
-            try:
-                loader = TextLoader(temp_file_path)
-                docs = loader.load()
-                splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-                chunks = splitter.split_documents(docs)
-            finally:
-                os.unlink(temp_file_path)
-        else:
-            # For programming languages: Use language-aware chunking that respects code structure
-            # Looks up file extension to determine language-specific splitting rules
-            ext_language_map = {
-                ".py": Language.PYTHON,
-                ".js": Language.JS,
-                ".ts": Language.TS,
-                ".java": Language.JAVA,
-                ".go": Language.GO,
-                ".cs": Language.CSHARP,
-                ".cpp": Language.CPP,
-                ".c": Language.C,
-                ".php": Language.PHP,
-                ".rb": Language.RUBY,
-                ".rs": Language.RUST,
-                ".scala": Language.SCALA,
-                ".swift": Language.SWIFT,
-                ".sol": Language.SOL,
-                ".kt": Language.KOTLIN,
-                ".lua": Language.LUA,
-                ".pl": Language.PERL,
-                ".hs": Language.HASKELL,
-                ".ps1": Language.POWERSHELL,
-                ".html": Language.HTML,
-                ".tex": Language.LATEX,
-                ".md": Language.MARKDOWN,
-                ".proto": Language.PROTO,
-                ".rst": Language.RST,
-                ".cob": Language.COBOL,
-                ".ex": Language.ELIXIR,
-                ".exs": Language.ELIXIR,
-            }
-            ext = next((e for e in ext_language_map if file_path.endswith(e)), None)
-            if ext:
-                language = ext_language_map[ext]
-                # Use language-specific splitter that respects syntax (e.g., function boundaries, classes)
-                splitter = RecursiveCharacterTextSplitter.from_language(language=language, chunk_size=1000, chunk_overlap=100)
-            else:
-                # Unknown file type: Use generic character-based chunking
-                splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-
-            from langchain.schema import Document
-            doc = Document(page_content=content, metadata={"source": file_path})
-            chunks = splitter.split_documents([doc])  # Standard chunking with 1000 char chunks and 100 char overlap
-
-        try:
-            # Skip files that didn't produce any chunks (e.g., empty files)
-            if not chunks:
+                _, chunk_texts, chunk_metas = future.result()
+                # Collect chunks and their metadata from each completed file
+                for i, chunk_text in enumerate(chunk_texts):
+                    all_chunks.append(chunk_text)
+                    # Recreate the (file_path, metadata) tuple format
+                    all_chunk_metadata.append((file_path, chunk_metas[i]))
+            except Exception as e:
+                print(f"Error processing {file_path}: {str(e)}")
                 continue
 
-            # Extract text content from chunks for batch embedding
-            chunk_texts = [chunk.page_content for chunk in chunks]
+    print(f"Total chunks collected from all files: {len(all_chunks)}")
 
-            # Generate vector embeddings for all chunks at once using OpenAI
-            embeddings = embeddings_model.embed_documents(chunk_texts)
+    # Batch Processing: Generate embeddings for all chunks with proper token batching
+    # This reduces API calls and respects OpenAI rate limits and token limits
+    embeddings = []
+    if all_chunks:
+        try:
+            # Split chunks into batches that respect OpenAI's token limits
+            # Use a more conservative estimate since the simple character-based estimate can be inaccurate
+            MAX_TOKENS_PER_REQUEST = 250000  # More conservative: leave 50k tokens buffer
 
-            # Index each chunk into Elasticsearch with all metadata and embedding
-            for chunk, embedding in zip(chunks, embeddings):
-                doc = {
-                    "repo_owner": owner,
-                    "repo_name": repo,
-                    "file_path": file_path,
-                    "content": chunk.page_content,
-                    "metadata": chunk.metadata,
-                    "embedding": embedding,
-                    "chunk_id": generate_chunk_id(owner, repo, file_path, chunk.page_content),
-                    "timestamp": int(time.time())
-                }
-                es.index(index=INDEX_NAME, id=doc["chunk_id"], body=doc)
+            # Use tiktoken for accurate token counting if available
+            def estimate_tokens(text):
+                if TIKTOKEN_AVAILABLE:
+                    try:
+                        # Use the same encoder that OpenAI uses for text-embedding-ada-002
+                        enc = tiktoken.encoding_for_model("text-embedding-ada-002")
+                        return len(enc.encode(text))
+                    except Exception:
+                        pass
+                # Fallback to conservative character-based estimation
+                return max(1, len(text) // 3)
 
-            print(f"Successfully indexed {len(chunks)} chunks from {file_path}")
+            current_batch = []
+            current_batch_tokens = 0
+            batch_count = 0
+
+            for chunk_text in all_chunks:
+                chunk_tokens = estimate_tokens(chunk_text)
+
+                # If adding this chunk would exceed the limit, process current batch first
+                if current_batch_tokens + chunk_tokens > MAX_TOKENS_PER_REQUEST and current_batch:
+                    batch_count += 1
+                    print(f"Processing batch {batch_count}: {len(current_batch)} chunks ({current_batch_tokens} tokens)...")
+                    try:
+                        batch_embeddings = embeddings_model.embed_documents(current_batch)
+                        embeddings.extend(batch_embeddings)
+                    except Exception as e:
+                        # If batch still fails, split into even smaller chunks
+                        if "max_tokens_per_request" in str(e):
+                            print(f"Batch {batch_count} still too large, splitting into sub-batches...")
+                            # Recursively split this batch into smaller sub-batches
+                            sub_batch_size = max(1, len(current_batch) // 2)
+                            for start_idx in range(0, len(current_batch), sub_batch_size):
+                                end_idx = min(start_idx + sub_batch_size, len(current_batch))
+                                sub_batch = current_batch[start_idx:end_idx]
+                                print(f"Processing sub-batch: {len(sub_batch)} chunks...")
+                                batch_embeddings = embeddings_model.embed_documents(sub_batch)
+                                embeddings.extend(batch_embeddings)
+                        else:
+                            raise
+                    current_batch = []
+                    current_batch_tokens = 0
+
+                # Add chunk to current batch
+                current_batch.append(chunk_text)
+                current_batch_tokens += chunk_tokens
+
+            # Process final batch
+            if current_batch:
+                batch_count += 1
+                print(f"Processing batch {batch_count}: {len(current_batch)} chunks ({current_batch_tokens} tokens)...")
+                batch_embeddings = embeddings_model.embed_documents(current_batch)
+                embeddings.extend(batch_embeddings)
+
+            print(f"Successfully generated embeddings for {len(embeddings)} chunks across {batch_count} batches")
+
         except Exception as e:
-            print(f"Error processing {file_path}: {str(e)}")
-            continue
+            print(f"Error generating embeddings: {str(e)}")
+            return
+
+    # Batch indexing with Elasticsearch bulk API
+    bulk_actions = []
+    timestamp = int(time.time())
+
+    for i, (chunk_text, embedding) in enumerate(zip(all_chunks, embeddings)):
+        file_path, metadata = all_chunk_metadata[i]
+
+        doc = {
+            "repo_owner": owner,
+            "repo_name": repo,
+            "file_path": file_path,
+            "content": chunk_text,
+            "metadata": metadata,
+            "embedding": embedding,
+            "chunk_id": generate_chunk_id(owner, repo, file_path, chunk_text),
+            "timestamp": timestamp
+        }
+
+        # Prepare bulk action
+        bulk_actions.extend([
+            {"index": {"_index": INDEX_NAME, "_id": doc["chunk_id"]}},
+            doc
+        ])
+
+    # Execute bulk indexing
+    if bulk_actions:
+        try:
+            response = es.bulk(body=bulk_actions, refresh=True)
+            if response.get("errors"):
+                failed_items = [item for item in response["items"] if item["index"]["status"] >= 400]
+                print(f"Bulk indexing completed with {len(failed_items)} failures out of {len(bulk_actions)//2}")
+            else:
+                print(f"Successfully indexed {len(bulk_actions)//2} chunks via bulk API")
+        except Exception as e:
+            print(f"Error during bulk indexing: {str(e)}")
 
     # Refresh the index to make all newly indexed documents immediately searchable
     try:
