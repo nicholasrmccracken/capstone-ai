@@ -97,8 +97,8 @@ def simulate_text_splitting(content: str, file_path: str) -> List[str]:
     return chunks
 
 def simulate_embeddings_generation(chunks: List[str]) -> List[List[float]]:
-    """Simulate Google Gen AI embeddings generation."""
-    print("🧠 Generating embeddings with Google Generative AI")
+    """Simulate Open AI API embeddings generation."""
+    print("🧠 Generating embeddings with Open AI API")
 
     embeddings_model = DemoEmbeddings()
 

@@ -50,7 +50,7 @@ const getAllFilePaths = (
 export default function Chat() {
   const [url, setUrl] = useState("");
   const [repoUrl, setRepoUrl] = useState("");
-  const [messages, setMessages] = useState([
+  const [messages, setMessages] = useState<Message[]>([
     {
       sender: "bot",
       text: "👋 Welcome to RepoRover! Please enter a GitHub repository URL to get started.\n\n💡 **Tip:** Use @filename.py to tag files for detailed explanations!",
@@ -276,7 +276,7 @@ export default function Chat() {
     setInputMessage(""); // Clear input immediately
     setShowAutocomplete(false);
 
-    setMessages((prev) => [...prev, { sender: "user", text: currentMessage }]);
+    setMessages((prev) => [...prev, { sender: "user", text: currentMessage, sourceFiles: [] }]);
 
     try {
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
@@ -671,7 +671,7 @@ export default function Chat() {
       <h2 className="text-4xl font-bold text-blue-400 drop-shadow-md">
         RepoRover Chat
       </h2>
-      <div className="flex w-full max-w-7xl gap-4" style={{ height: 'calc(100vh - 120px)' }}>
+      <div className="flex w-full max-w-screen-2xl gap-3" style={{ height: 'calc(100vh - 120px)' }}>
         <div className="w-1/2 bg-gray-900/70 border border-gray-700 p-6 rounded-xl shadow-lg flex flex-col" style={{ height: '100%' }}>
           <form onSubmit={handleSubmit} className="flex gap-2 mb-4">
             <input type="text" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Enter a GitHub repository URL"

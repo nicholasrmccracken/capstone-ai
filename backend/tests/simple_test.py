@@ -23,9 +23,9 @@ def test_environment_variables():
         print("❌ GITHUB_TOKEN is not set")
 
     if GOOGLE_API_KEY:
-        print("✅ GOOGLE_API_KEY is set")
+        print("✅ Open AI API KEY is set")
     else:
-        print("❌ GOOGLE_API_KEY is not set")
+        print("❌ Open AI API KEY is not set")
 
     print(f"📍 ES_HOST: {ES_HOST}")
     print(f"👤 ES_USER: {ES_USER}")
@@ -117,7 +117,7 @@ def test_embeddings():
         from config import GOOGLE_API_KEY
 
         if not GOOGLE_API_KEY:
-            print("⚠️  GOOGLE_API_KEY not found, testing with mock embeddings")
+            print("⚠️  Open AI API KEY not found, testing with mock embeddings")
 
         # Import mock embeddings class from ingest_pipeline
         sys.path.append(os.path.dirname(os.path.abspath(__file__)))

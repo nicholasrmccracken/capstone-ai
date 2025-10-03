@@ -15,6 +15,11 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Repo Rover",
   description: "Explore and manage your GitHub repositories with ease",
+  icons: {
+    icon: '/repo_rover_fav.png',
+    apple: '/repo_rover_fav.png',
+    shortcut: '/repo_rover_fav.png',
+  },
 };
 
 export default function RootLayout({

@@ -6,7 +6,7 @@ AI-powered GitHub repository analysis assistant that helps understand complex co
 
 - **Repository Analysis**: Submit a GitHub URL and get AI-powered insights about the codebase
 - **File Processing**: Automatically processes all repository files (code, docs, data)
-- **Smart Embeddings**: Uses Google Gen AI to create semantic embeddings for intelligent search
+- **Smart Embeddings**: Uses OpenAI API to create semantic embeddings for intelligent search
 - **Chat Interface**: Ask questions about the repository and get contextual answers with file citations
 
 ## How it works
@@ -14,7 +14,7 @@ AI-powered GitHub repository analysis assistant that helps understand complex co
 1. **Frontend** (Next.js): Simple chat interface for repository URL submission
 2. **Backend** (Flask): API endpoint that fetches GitHub repositories via API
 3. **Processing** (LangChain): Text splitting and language detection for code files
-4. **Embeddings** (Google Gen AI): Converts code chunks to vector representations
+4. **Embeddings** (OpenAI API): Converts code chunks to vector representations
 5. **Search** (Elasticsearch): Vector database for fast semantic search
 6. **Response**: Contextual answers with file and line references
 
@@ -78,7 +78,7 @@ cd capstone-ai
 
 # Create .env with API keys
 echo "GITHUB_TOKEN=ghp_your_token_here" > .env
-echo "GOOGLE_API_KEY=your_google_ai_key" >> .env
+echo "OPENAI_API_KEY=your_openai_api_key" >> .env
 ```
 
 ### 2. Backend Setup
@@ -116,9 +116,9 @@ npm run dev                                  # Runs on port 3000
 ## Architecture
 
 ```
-Frontend (Next.js) → Backend (Flask) → LangChain Processing → Google Gen AI Embeddings → Elasticsearch Index
+Frontend (Next.js) → Backend (Flask) → LangChain Processing → OpenAI Embeddings → Elasticsearch Index
 ```
 
-**Tech Stack**: Python, Flask, Google Gen AI, LangChain, Elasticsearch, Next.js, Node.js
+**Tech Stack**: Python, Flask, OpenAI, LangChain, Elasticsearch, Next.js, Node.js
 Data Flow: GitHub API → Repo Processing → AI Embeddings → Vector Search → Chat Response
 ```

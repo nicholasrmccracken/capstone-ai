@@ -6,7 +6,7 @@ import json
 from langchain_openai import ChatOpenAI
 
 import os
-from github import Github, UnknownObjectException
+from github import Github, UnknownObjectException, Auth
 from dotenv import load_dotenv
 from elasticsearch import Elasticsearch
 import base64
@@ -66,7 +66,7 @@ def get_tree():
 
     try:
         owner, repo_name = github_url.strip("/").split("/")[-2:]
-        g = Github(github_token)
+        g = Github(auth=Auth.Token(github_token))
         repo = g.get_repo(f"{owner}/{repo_name}")
 
         default_branch_name = repo.default_branch
@@ -114,7 +114,7 @@ def get_file_content():
         return jsonify({"status": "error", "message": "GitHub token not configured."}), 500
 
     try:
-        g = Github(github_token)
+        g = Github(auth=Auth.Token(github_token))
         repo_obj = g.get_repo(f"{owner}/{repo}")
         file = repo_obj.get_contents(path, ref=branch)
         content = base64.b64decode(file.content).decode("utf-8")
@@ -144,10 +144,11 @@ def query():
             file_contexts = []
             for file_path in tagged_files:
                 try:
-                    g = Github(github_token)
+                    g = Github(auth=Auth.Token(github_token))
                     repo_obj = g.get_repo(f"{owner}/{repo}")
                     file_content_obj = repo_obj.get_contents(file_path)
-                    content = base64.b64decode(file_content_obj.content).decode("utf-8")
+                    content = base64.b64decode(
+                        file_content_obj.content).decode("utf-8")
 
                     # Get file extension for syntax highlighting
                     ext = file_path.split('.')[-1] if '.' in file_path else ''
@@ -165,7 +166,8 @@ def query():
 ```""")
 
                 except Exception as e:
-                    file_contexts.append(f"## File: {file_path}\n\n❌ Error loading file: {str(e)}")
+                    file_contexts.append(
+                        f"## File: {file_path}\n\n❌ Error loading file: {str(e)}")
 
             full_file_context = "\n\n".join(file_contexts)
 
@@ -228,8 +230,10 @@ Provide a detailed explanation focusing on the tagged files:"""
                 return jsonify({"response": "No results found."})
 
             # Extract unique file paths from search results and deduplicate
-            all_source_files = [hit["_source"].get("file_path", "") for hit in hits if hit["_source"].get("file_path")]
-            source_files = list(dict.fromkeys(all_source_files))  # Preserve order while removing duplicates
+            all_source_files = [hit["_source"].get(
+                "file_path", "") for hit in hits if hit["_source"].get("file_path")]
+            # Preserve order while removing duplicates
+            source_files = list(dict.fromkeys(all_source_files))
 
             context = "\n\n".join(
                 [hit["_source"].get("content", "No content") for hit in hits])
@@ -243,7 +247,7 @@ Instructions:
 - Clearly explain what the code does in simple terms, as if the user has no prior view of it.
 - Structure your answers:
   1. Start with an **Explanation** of what the code is doing.
-  2. Show **Relevant Code Excerpts** (only the key lines/functions/conditions).
+  2. Show **Relevant Code Excerpts** (only the key lines/functions/conditions). Split the relevant code into multiple code blocks if needed.
   3. Provide any **step-by-step reasoning or clarification** if needed.
 - If the code context is not enough to fully answer, acknowledge this and suggest what additional information might be required.
 
@@ -270,7 +274,7 @@ Answer:"""
 def test_env():
     return jsonify({
         "GITHUB_TOKEN": bool(os.getenv("GITHUB_TOKEN")),
-        "GOOGLE_API_KEY": bool(os.getenv("GOOGLE_API_KEY")),
+        "OPENAI_API_KEY": bool(os.getenv("OPENAI_API_KEY")),
         "ES_HOST": os.getenv("ES_HOST"),
         "ES_USER": os.getenv("ES_USER"),
         "ES_PASSWORD": os.getenv("ES_PASSWORD")
