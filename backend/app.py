@@ -26,6 +26,7 @@ if OPENAI_API_KEY:
 else:
     llm = None
 
+
 @app.route("/api/ingest", methods=["POST"])
 def ingest():
     github_url = request.json.get("github_url")
@@ -36,18 +37,22 @@ def ingest():
         return jsonify({"status": "started"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
-    
+
+
 def generate_ascii_tree(structure, prefix="", indent=""):
     lines = []
     items = sorted(structure.items())
     for index, (key, value) in enumerate(items):
         is_last = index == len(items) - 1
         line_prefix = f"{indent}{'└── ' if is_last else '├── '}"
-        lines.append(f"{line_prefix}{key}{'/' if isinstance(value, dict) else ''}")
+        lines.append(
+            f"{line_prefix}{key}{'/' if isinstance(value, dict) else ''}")
         if isinstance(value, dict):
             new_indent = indent + ("    " if is_last else "│   ")
-            lines.extend(generate_ascii_tree(value, prefix=f"{prefix}{key}/", indent=new_indent))
+            lines.extend(generate_ascii_tree(
+                value, prefix=f"{prefix}{key}/", indent=new_indent))
     return lines
+
 
 @app.route("/api/get_tree", methods=["POST"])
 def get_tree():
@@ -58,7 +63,7 @@ def get_tree():
     github_token = os.getenv("GITHUB_TOKEN")
     if not github_token:
         return jsonify({"status": "error", "message": "GitHub token not configured on server."}), 500
-        
+
     try:
         owner, repo_name = github_url.strip("/").split("/")[-2:]
         g = Github(github_token)
@@ -67,7 +72,7 @@ def get_tree():
         default_branch_name = repo.default_branch
         latest_commit = repo.get_commit(sha=default_branch_name)
         tree_items = repo.get_git_tree(latest_commit.sha, recursive=True).tree
-        
+
         # Build a nested dictionary from the flat list of paths
         files_structure = {}
         for item in tree_items:
@@ -92,6 +97,7 @@ def get_tree():
     except Exception as e:
         print(f"Error fetching tree: {e}")
         return jsonify({"status": "error", "message": f"Could not fetch repository data from GitHub: {str(e)}"}), 500
+
 
 @app.route("/api/get_file_content", methods=["POST"])
 def get_file_content():
@@ -118,6 +124,7 @@ def get_file_content():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+
 @app.route("/api/query", methods=["POST"])
 def query():
     data = request.json
@@ -138,11 +145,8 @@ def query():
             basic_auth=(es_user, es_password)
         )
 
-        owner, repo_name = github_url.strip("/").split("/")[-2:]
-        index_name = f"{owner}_{repo_name}".lower()
-
         res = es.search(
-            index=index_name,
+            index="repo_chunks",
             body={
                 "query": {
                     "match": {
@@ -157,11 +161,39 @@ def query():
         if not hits:
             return jsonify({"response": "No results found."})
 
-        response_text = "\n\n".join([hit["_source"].get("content", "No content") for hit in hits])
-        return jsonify({"response": response_text})
+        context = "\n\n".join(
+            [hit["_source"].get("content", "No content") for hit in hits])
+
+        prompt = f"""
+You are RepoRover, a chatbot that answers questions about GitHub repositories.
+
+Instructions:
+- The user does NOT see the raw code context. You must always include any relevant code snippets in your answer. HOWEVER NEVER MENTION "the provided code" as this is invisible to the user.
+- When including code, show only the minimal, most relevant lines. Never dump entire files unless absolutely necessary.
+- Clearly explain what the code does in simple terms, as if the user has no prior view of it.
+- Structure your answers:
+  1. Start with an **Explanation** of what the code is doing.
+  2. Show **Relevant Code Excerpts** (only the key lines/functions/conditions).
+  3. Provide any **step-by-step reasoning or clarification** if needed.
+- If the code context is not enough to fully answer, acknowledge this and suggest what additional information might be required.
+
+Format your response in markdown, using headings, bullet points, and code blocks as appropriate. Insert blank lines between sections for readability.
+
+Code context:
+{context}
+
+Answer:"""
+
+        response = llm.invoke(prompt)
+        answer = response.content.strip()
+
+        answer += f"\n\n📊 Used {len(hits)} code chunks as sources."
+
+        return jsonify({"response": answer})
 
     except Exception as e:
         return jsonify({"status": "error", "message": f"Query failed: {str(e)}"}), 500
+
 
 @app.route("/api/test_env", methods=["GET"])
 def test_env():
@@ -173,11 +205,13 @@ def test_env():
         "ES_PASSWORD": os.getenv("ES_PASSWORD")
     })
 
+
 @app.route("/api/test_url", methods=["POST"])
 def test_url():
     github_url = request.json.get("github_url")
     owner, repo_name = github_url.strip("/").split("/")[-2:]
     return jsonify({"owner": owner, "repo_name": repo_name})
+
 
 @app.route("/api/chat", methods=["POST"])
 def chat():
@@ -231,6 +265,7 @@ Answer:"""
 
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)

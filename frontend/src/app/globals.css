@@ -24,3 +24,139 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+.markdown-content p {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.markdown-content pre {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.markdown-content code {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  word-break: break-all;
+}
+
+/* Enhanced Markdown Styling for Chat */
+
+.markdown-content {
+  /* Base settings for word wrapping */
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4,
+.markdown-content h5,
+.markdown-content h6 {
+  color: #81a1c1; /* Light blue for headers */
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+  font-weight: bold;
+}
+
+.markdown-content h1 {
+  font-size: 1.5em;
+}
+
+.markdown-content h2 {
+  font-size: 1.3em;
+}
+
+.markdown-content h3 {
+  font-size: 1.1em;
+}
+
+.markdown-content p {
+  margin-bottom: 0.75em;
+  line-height: 1.6;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  margin-left: 1.5em;
+  margin-bottom: 0.75em;
+}
+
+.markdown-content li {
+  margin-bottom: 0.25em;
+}
+
+.markdown-content blockquote {
+  border-left: 4px solid #81a1c1;
+  padding-left: 1em;
+  margin: 1em 0;
+  color: #d8dee9;
+  background-color: #2e3440;
+  border-radius: 4px;
+}
+
+.markdown-content pre {
+  background-color: #2e3440; /* Dark background for code blocks */
+  color: #eceff4; /* Light text */
+  padding: 1em;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 1em 0;
+  border: 1px solid #4c566a;
+  white-space: pre;
+}
+
+.markdown-content code {
+  background-color: rgba(76, 86, 106, 0.3); /* Subtle background for inline code */
+  color: #88c0d0; /* Accent color for inline code */
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-family: 'Geist Mono', Monaco, 'Cascadia Code', monospace;
+  font-size: 0.9em;
+}
+
+.markdown-content pre code {
+  background-color: transparent; /* Remove background for code inside pre */
+  padding: 0;
+  border-radius: 0;
+  color: inherit;
+}
+
+.markdown-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1em 0;
+}
+
+.markdown-content th,
+.markdown-content td {
+  border: 1px solid #4c566a;
+  padding: 0.5em;
+  text-align: left;
+}
+
+.markdown-content th {
+  background-color: #3b4252;
+  font-weight: bold;
+}
+
+.markdown-content strong {
+  font-weight: bold;
+  color: #8fbcbb;
+}
+
+.markdown-content em {
+  font-style: italic;
+  color: #a7c7e7;
+}
+
+.markdown-content a {
+  color: #5e81ac;
+  text-decoration: underline;
+}
+
+.markdown-content a:hover {
+  color: #81a1c1;
+}

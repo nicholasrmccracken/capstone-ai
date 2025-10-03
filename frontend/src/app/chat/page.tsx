@@ -1,5 +1,7 @@
 "use client";
 import { useMemo, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface TreeStructure {
   [key: string]: TreeStructure | string;
@@ -91,12 +93,6 @@ export default function Chat() {
     e.preventDefault();
     if (!url.trim()) return;
 
-      if (githubRegex.test(url)) {
-        setMessages((prev) => [
-          ...prev,
-          { sender: "bot", text: "✅ Processing repository ingestion..." },
-        ]);
-
     if (githubRegex.test(url)) {
       const trimmedUrl = url.trim();
       setRepoUrl(trimmedUrl);
@@ -106,31 +102,27 @@ export default function Chat() {
         ...prev,
         {
           sender: "bot",
-          text: "✅ Thanks! That looks like a valid GitHub repository. Processing...",
+          text: "✅ Thanks! That looks like a valid GitHub repository. Starting ingestion...",
         },
       ]);
       try {
         const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
-        const response = await fetch(`${backendUrl}/api/chat`, {
+        const response = await fetch(`${backendUrl}/api/ingest`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ github_url: trimmedUrl }),
         });
         const data = await response.json();
 
-        if (data.status === "success") {
-          let answerText = data.answer;
-          if (data.chunks_used > 0) {
-            answerText += `\n\n📊 Used ${data.chunks_used} code chunks from repositories: ${data.repos.join(", ")}`;
-          }
+        if (data.status === "started") {
           setMessages((prev) => [
             ...prev,
-            { sender: "bot", text: answerText },
+            { sender: "bot", text: "✅ Repository ingestion started. You can now ask questions about the repo." },
           ]);
         } else {
           setMessages((prev) => [
             ...prev,
-            { sender: "bot", text: `❌ ${data.message || "Error processing question"}` },
+            { sender: "bot", text: `❌ ${data.message || "Error starting ingestion"}` },
           ]);
         }
       } catch (error) {
@@ -140,8 +132,6 @@ export default function Chat() {
         ]);
       }
     }
-
-    setIsLoading(false);
   };
 
   const handleChatSubmit = async (e: React.FormEvent) => {
@@ -159,6 +149,7 @@ export default function Chat() {
         body: JSON.stringify({ query: inputMessage, github_url: repoUrl }),
       });
       const data = await response.json();
+      console.log("LLM Response:", data.response);
       setMessages((prev) => [
         ...prev,
         {
@@ -358,11 +349,12 @@ export default function Chat() {
 
   return (
     <main className="flex flex-col items-center h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white p-4 gap-4">
+      {/* Chat UI */}
       <h2 className="text-4xl font-bold text-blue-400 drop-shadow-md">
         RepoRover Chat
       </h2>
       <div className="flex w-full max-w-7xl flex-1 gap-4 overflow-hidden">
-        <div className="w-1/2 bg-gray-900/70 border border-gray-700 p-6 rounded-xl shadow-lg flex flex-col">
+        <div className="w-2/5 bg-gray-900/70 border border-gray-700 p-6 rounded-xl shadow-lg flex flex-col">
           <form onSubmit={handleSubmit} className="flex gap-2 mb-4">
             <input type="text" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Enter a GitHub repository URL"
               className="flex-1 p-3 border border-gray-600 bg-gray-800 text-white rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
@@ -408,18 +400,18 @@ export default function Chat() {
         </div>
 
         {/* Right Panel: Chat Window */}
-        <div className="flex flex-col w-1/2">
+        <div className="flex flex-col w-3/5">
           <div className="flex-1 bg-gray-900/70 border border-gray-700 p-6 rounded-xl shadow-lg overflow-y-auto">
             {messages.map((msg, index) => (
               <div
               key={index}
-              className={`mb-3 p-3 rounded-lg max-w-[85%] ${
+              className={`markdown-content mb-3 p-3 rounded-lg max-w-[85%] ${
                 msg.sender === "bot"
                 ? "bg-gray-700 text-gray-200 self-start"
                 : "bg-blue-600 text-white self-end"
                 }`}
                 >
-                {msg.text}
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown>
               </div>
             ))}
           </div>
