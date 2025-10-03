@@ -672,7 +672,7 @@ export default function Chat() {
         RepoRover Chat
       </h2>
       <div className="flex w-full max-w-7xl gap-4" style={{ height: 'calc(100vh - 120px)' }}>
-        <div className="w-2/5 bg-gray-900/70 border border-gray-700 p-6 rounded-xl shadow-lg flex flex-col" style={{ height: '100%' }}>
+        <div className="w-1/2 bg-gray-900/70 border border-gray-700 p-6 rounded-xl shadow-lg flex flex-col" style={{ height: '100%' }}>
           <form onSubmit={handleSubmit} className="flex gap-2 mb-4">
             <input type="text" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Enter a GitHub repository URL"
               className="flex-1 p-3 border border-gray-600 bg-gray-800 text-white rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
@@ -729,7 +729,7 @@ export default function Chat() {
         </div>
 
         {/* Right Panel: Chat Window */}
-        <div className="flex flex-col w-3/5" style={{ height: '100%' }}>
+        <div className="flex flex-col w-1/2" style={{ height: '100%' }}>
           <div ref={chatMessagesRef} className="flex-1 bg-gray-900/70 border border-gray-700 p-6 rounded-xl shadow-lg overflow-y-auto">
             {messages.map((msg, index) => (
               <div
