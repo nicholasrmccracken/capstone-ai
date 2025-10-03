@@ -284,6 +284,46 @@ def test_url():
     return jsonify({"owner": owner, "repo_name": repo_name})
 
 
+@app.route("/api/clear_repositories", methods=["DELETE"])
+def clear_repositories():
+    """Clear all repositories from Elasticsearch index."""
+    try:
+        es_host = os.getenv("ES_HOST")
+        es_user = os.getenv("ES_USER")
+        es_password = os.getenv("ES_PASSWORD")
+
+        if not es_host or not es_user or not es_password:
+            return jsonify({"status": "error", "message": "Elasticsearch credentials not configured."}), 500
+
+        es = Elasticsearch(
+            hosts=[es_host],
+            basic_auth=(es_user, es_password),
+            verify_certs=False
+        )
+
+        # Check if index exists
+        if not es.indices.exists(index="repo_chunks"):
+            return jsonify({"status": "success", "message": "No repositories to clear - index is empty."})
+
+        # Delete all documents from the index
+        delete_result = es.delete_by_query(
+            index="repo_chunks",
+            body={"query": {"match_all": {}}},
+            refresh=True
+        )
+
+        deleted_count = delete_result["deleted"]
+
+        return jsonify({
+            "status": "success",
+            "message": f"Successfully cleared {deleted_count} chunks from all repositories.",
+            "deleted_chunks": deleted_count
+        })
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Failed to clear repositories: {str(e)}"}), 500
+
+
 @app.route("/api/chat", methods=["POST"])
 def chat():
     question = request.json.get("question")

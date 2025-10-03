@@ -10,7 +10,7 @@ interface TreeStructure {
 interface Message {
   sender: string;
   text: string;
-  sourceFiles?: string[];
+  sourceFiles: string[];
 }
 
 const getAllDirectoryPaths = (
@@ -73,6 +73,8 @@ export default function Chat() {
   const [autocompleteOptions, setAutocompleteOptions] = useState<string[]>([]);
   const [autocompleteIndex, setAutocompleteIndex] = useState(0);
   const [atPosition, setAtPosition] = useState<number>(-1);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const treeContainerRef = useRef<HTMLDivElement>(null);
   const chatMessagesRef = useRef<HTMLDivElement>(null);
@@ -422,6 +424,63 @@ export default function Chat() {
     }
   };
 
+  // Handle clearing all repositories from Elasticsearch
+  const handleClearRepositories = async () => {
+    setIsClearing(true);
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
+      const response = await fetch(`${backendUrl}/api/clear_repositories`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const data = await response.json();
+
+      if (data.status === "success") {
+        setMessages((prev) => [
+          ...prev,
+          {
+            sender: "bot",
+            text: `✅ ${data.message}`,
+            sourceFiles: [],
+          },
+        ]);
+        // Clear the current repository state
+        setTreeStructure(null);
+        setRepoUrl("");
+        setUrl("");
+        setCurrentPath([]);
+        setViewMode("tree");
+        setFileContent(null);
+        setSelectedFile(null);
+        setSelectedItems([]);
+        setExpandedNodes(new Set());
+        setAllFilePaths([]);
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          {
+            sender: "bot",
+            text: `❌ ${data.message}`,
+            sourceFiles: [],
+          },
+        ]);
+      }
+    } catch (error) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          sender: "bot",
+          text: "❌ Error connecting to backend. Please try again later.",
+          sourceFiles: [],
+        },
+      ]);
+    } finally {
+      setIsClearing(false);
+      setShowClearConfirm(false);
+    }
+  };
+
   const TreeNode = ({ structure, parentPath = [], prefix = "" }: {
     structure: TreeStructure;
     parentPath?: string[];
@@ -620,6 +679,17 @@ export default function Chat() {
             <button type="submit" className="px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-all">Send</button>
           </form>
 
+          {/* Clear Repositories Button */}
+          <div className="mb-4">
+            <button
+              onClick={() => setShowClearConfirm(true)}
+              className="w-full px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-semibold transition-all flex items-center justify-center gap-2"
+              title="Clear all repositories from Elasticsearch"
+            >
+              Clear Repositories
+            </button>
+          </div>
+
           {/* --- MODIFIED: Heading and new toggle button are on the same line --- */}
           <div className="flex justify-between items-center mb-2">
             <h3 className="text-xl font-bold text-gray-300">Repository Structure</h3>
@@ -737,6 +807,44 @@ export default function Chat() {
           </div>
         </div>
       </div>
+
+      {/* Confirmation Dialog for Clearing Repositories */}
+      {showClearConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 border border-gray-600 rounded-lg p-6 max-w-md mx-4">
+            <h3 className="text-xl font-bold text-white mb-4 text-center">Clear All Repositories?</h3>
+            <p className="text-gray-300 mb-6">
+              This will permanently delete all ingested repositories and their data from Elasticsearch.
+              This action cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-center">
+              <button
+                onClick={() => setShowClearConfirm(false)}
+                className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg transition-colors"
+                disabled={isClearing}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleClearRepositories}
+                className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors flex items-center gap-2"
+                disabled={isClearing}
+              >
+                {isClearing ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Clearing...
+                  </>
+                ) : (
+                  <>
+                    Clear All
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
