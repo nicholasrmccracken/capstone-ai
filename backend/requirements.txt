@@ -5,8 +5,9 @@ langchain
 langchain-text-splitters
 langchain-openai
 langchain-community
-elasticsearch==7.5.1
+elasticsearch==7.17.9
 python-dotenv
+PyGithub
 
 langchain-core
 langsmith
