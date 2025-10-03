@@ -130,41 +130,103 @@ def query():
     data = request.json
     query_text = data.get("query")
     github_url = data.get("github_url")
+    tagged_files = data.get("tagged_files", [])
     if not query_text or not github_url:
         return jsonify({"status": "error", "message": "Query or URL not provided"}), 400
 
     try:
-        es_host = os.getenv("ES_HOST")
-        es_user = os.getenv("ES_USER")
-        es_password = os.getenv("ES_PASSWORD")
-        if not es_host or not es_user or not es_password:
-            return jsonify({"status": "error", "message": "Elasticsearch credentials not configured."}), 500
+        # Extract repo info for tagged file retrieval
+        owner, repo = github_url.strip("/").split("/")[-2:]
+        github_token = os.getenv("GITHUB_TOKEN")
 
-        es = Elasticsearch(
-            hosts=[es_host],
-            basic_auth=(es_user, es_password)
-        )
+        if tagged_files:
+            # Handle @file tagged queries - fetch full file contents
+            file_contexts = []
+            for file_path in tagged_files:
+                try:
+                    g = Github(github_token)
+                    repo_obj = g.get_repo(f"{owner}/{repo}")
+                    file_content_obj = repo_obj.get_contents(file_path)
+                    content = base64.b64decode(file_content_obj.content).decode("utf-8")
 
-        res = es.search(
-            index="repo_chunks",
-            body={
-                "query": {
-                    "match": {
-                        "content": query_text  # Assuming 'content' field in ingested docs
+                    # Get file extension for syntax highlighting
+                    ext = file_path.split('.')[-1] if '.' in file_path else ''
+                    lang_map = {
+                        'py': 'python', 'js': 'javascript', 'ts': 'typescript',
+                        'java': 'java', 'cpp': 'cpp', 'c': 'c', 'cs': 'csharp',
+                        'php': 'php', 'rb': 'ruby', 'go': 'go', 'rs': 'rust'
                     }
-                },
-                "size": 5  # Limit results
-            }
-        )
+                    lang = lang_map.get(ext, '')
 
-        hits = res["hits"]["hits"]
-        if not hits:
-            return jsonify({"response": "No results found."})
+                    file_contexts.append(f"""## File: {file_path}
 
-        context = "\n\n".join(
-            [hit["_source"].get("content", "No content") for hit in hits])
+```{lang}
+{content}
+```""")
 
-        prompt = f"""
+                except Exception as e:
+                    file_contexts.append(f"## File: {file_path}\n\n❌ Error loading file: {str(e)}")
+
+            full_file_context = "\n\n".join(file_contexts)
+
+            prompt = f"""
+You are RepoRover, a chatbot that explains GitHub repository files.
+
+The user has tagged specific files using @file syntax. Your task is to explain these files clearly and comprehensively.
+
+Instructions:
+- Provide a **complete explanation** of each tagged file
+- Structure your response clearly for each file
+- Include key functions, classes, and important patterns
+- Show **relevant code snippets** to illustrate your points
+- Explain the file's purpose, main components, and how it fits into the broader codebase
+- Use markdown formatting with file headers and code blocks
+- Include line number references where helpful (e.g., "Lines 15-25 define the main class")
+
+Tagged files context:
+{full_file_context}
+
+User's question: {query_text}
+
+Provide a detailed explanation focusing on the tagged files:"""
+
+            response = llm.invoke(prompt)
+            answer = response.content.strip()
+            answer += f"\n\n📄 Analyzed {len(tagged_files)} tagged files."
+
+        else:
+            # Original chunk-based search logic
+            es_host = os.getenv("ES_HOST")
+            es_user = os.getenv("ES_USER")
+            es_password = os.getenv("ES_PASSWORD")
+            if not es_host or not es_user or not es_password:
+                return jsonify({"status": "error", "message": "Elasticsearch credentials not configured."}), 500
+
+            es = Elasticsearch(
+                hosts=[es_host],
+                basic_auth=(es_user, es_password)
+            )
+
+            res = es.search(
+                index="repo_chunks",
+                body={
+                    "query": {
+                        "match": {
+                            "content": query_text
+                        }
+                    },
+                    "size": 5
+                }
+            )
+
+            hits = res["hits"]["hits"]
+            if not hits:
+                return jsonify({"response": "No results found."})
+
+            context = "\n\n".join(
+                [hit["_source"].get("content", "No content") for hit in hits])
+
+            prompt = f"""
 You are RepoRover, a chatbot that answers questions about GitHub repositories.
 
 Instructions:
@@ -184,10 +246,9 @@ Code context:
 
 Answer:"""
 
-        response = llm.invoke(prompt)
-        answer = response.content.strip()
-
-        answer += f"\n\n📊 Used {len(hits)} code chunks as sources."
+            response = llm.invoke(prompt)
+            answer = response.content.strip()
+            answer += f"\n\n📊 Used {len(hits)} code chunks as sources."
 
         return jsonify({"response": answer})
 
