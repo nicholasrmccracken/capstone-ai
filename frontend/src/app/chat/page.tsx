@@ -7,6 +7,12 @@ interface TreeStructure {
   [key: string]: TreeStructure | string;
 }
 
+interface Message {
+  sender: string;
+  text: string;
+  sourceFiles?: string[];
+}
+
 const getAllDirectoryPaths = (
   structure: TreeStructure,
   parentPath: string[] = []
@@ -48,6 +54,7 @@ export default function Chat() {
     {
       sender: "bot",
       text: "👋 Welcome to RepoRover! Please enter a GitHub repository URL to get started.\n\n💡 **Tip:** Use @filename.py to tag files for detailed explanations!",
+      sourceFiles: [],
     },
   ]);
   const [inputMessage, setInputMessage] = useState("");
@@ -140,6 +147,7 @@ export default function Chat() {
         {
           sender: "bot",
           text: "✅ Thanks! That looks like a valid GitHub repository. Starting ingestion...",
+          sourceFiles: [],
         },
       ]);
       try {
@@ -154,18 +162,18 @@ export default function Chat() {
         if (data.status === "started") {
           setMessages((prev) => [
             ...prev,
-            { sender: "bot", text: "✅ Repository ingestion complete. You can now ask questions about the repo." },
+            { sender: "bot", text: "✅ Repository ingestion complete. You can now ask questions about the repo.", sourceFiles: [] },
           ]);
         } else {
           setMessages((prev) => [
             ...prev,
-            { sender: "bot", text: `❌ ${data.message || "Error starting ingestion"}` },
+            { sender: "bot", text: `❌ ${data.message || "Error starting ingestion"}`, sourceFiles: [] },
           ]);
         }
       } catch (error) {
         setMessages((prev) => [
           ...prev,
-          { sender: "bot", text: "❌ Error connecting to backend. Please try again later." },
+          { sender: "bot", text: "❌ Error connecting to backend. Please try again later.", sourceFiles: [] },
         ]);
       }
     }
@@ -287,11 +295,14 @@ export default function Chat() {
       });
       const data = await response.json();
       console.log("LLM Response:", data.response);
+      console.log("Source files:", data.source_files);
+
       setMessages((prev) => [
         ...prev,
         {
           sender: "bot",
           text: data.response || `⚠️ Error: ${data.message || "Failed to query."}`,
+          sourceFiles: data.source_files || [],
         },
       ]);
     } catch (error) {
@@ -300,6 +311,7 @@ export default function Chat() {
         {
           sender: "bot",
           text: "❌ Error connecting to backend. Please try again later.",
+          sourceFiles: [],
         },
       ]);
     }
@@ -359,16 +371,28 @@ export default function Chat() {
           path: filePath,
         }),
       });
-      if (!response.ok) throw new Error("Failed to fetch file content");
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          console.log(`File not found in current repository: ${filePath}`);
+          setMessages((prev) => [
+            ...prev,
+            { sender: "bot", text: `❌ File "${filePath}" not found in current repository. It may be from a different repository or the path may have changed.`, sourceFiles: [] },
+          ]);
+          return;
+        }
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
       const data = await response.json();
       setFileContent(data.content);
       setViewMode("file");
       treeContainerRef.current?.scrollTo(0, 0);
     } catch (error) {
-      console.error(error);
+      console.error("Error fetching file content:", error);
       setMessages((prev) => [
         ...prev,
-        { sender: "bot", text: `❌ Failed to fetch file content: ${error}` },
+        { sender: "bot", text: `❌ Failed to fetch file content for "${filePath}": ${error}. This file may not exist in the current repository.`, sourceFiles: [] },
       ]);
     }
   };
@@ -428,8 +452,11 @@ export default function Chat() {
                     {name}/ {isExpanded ? '[-]' : '[+]'}
                 </span>
               ) : (
-                  <span onClick={(e) => handleFileClick(name, parentPath, e)}
-                    className={`hover:underline ${selectedItems.includes(itemPath) || selectedFile === itemPath ? "bg-yellow-600 text-white px-1 rounded" : ""}`}>
+                  <span
+                    onClick={(e) => handleFileClick(name, parentPath, e)}
+                    className={`hover:underline ${selectedItems.includes(itemPath) || selectedFile === itemPath ? "bg-yellow-600 text-white px-1 rounded" : ""}`}
+                    data-file-path={itemPath}
+                  >
                   {name}
                 </span>
                 )}
@@ -483,6 +510,56 @@ export default function Chat() {
     return { allDirectoryPaths: allPaths, isFullyExpanded: fullyExpanded };
   }, [treeStructure, currentPath, expandedNodes]);
 
+  // Handle clicking on source file links
+  const handleSourceFileClick = (filePath: string) => {
+    console.log("Source file clicked:", filePath);
+    console.log("Available file paths:", allFilePaths.length, "files");
+    console.log("Tree structure exists:", !!treeStructure);
+    console.log("Repo details:", repoDetails);
+
+    // Try to open the file - don't restrict to allFilePaths since source files might be from different contexts
+    if (repoDetails.owner && repoDetails.repo && repoDetails.defaultBranch) {
+      setSelectedFile(filePath);
+      setSelectedItems([filePath]);
+
+      // Try to fetch and display the file content directly
+      fetchFileContent(filePath);
+
+      // If we have a tree structure, try to expand parent directories and scroll to the file
+      if (treeStructure && allFilePaths.length > 0) {
+        // Try to expand parent directories to make the file visible
+        const pathParts = filePath.split('/');
+        const parentPaths: string[] = [];
+        for (let i = 1; i < pathParts.length; i++) {
+          parentPaths.push(pathParts.slice(0, i).join('/'));
+        }
+
+        // Expand all parent directories
+        setExpandedNodes(prev => {
+          const newSet = new Set(prev);
+          parentPaths.forEach(path => newSet.add(path));
+          return newSet;
+        });
+
+        // Scroll to make the file visible in the tree (only if it exists in current repo)
+        setTimeout(() => {
+          const fileElement = document.querySelector(`[data-file-path="${filePath}"]`);
+          if (fileElement) {
+            fileElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            console.log("Successfully scrolled to file:", filePath);
+          } else {
+            console.log("File not found in current repository tree:", filePath);
+            console.log("This is normal - source files may be from different repositories");
+          }
+        }, 100);
+      } else {
+        console.log("No tree structure available or no file paths loaded");
+      }
+    } else {
+      console.log("Repository details not available for file opening");
+    }
+  };
+
   // Render message with @file highlighting
   const renderMessageWithHighlights = (text: string, isUser: boolean) => {
     if (isUser) {
@@ -501,6 +578,32 @@ export default function Chat() {
     }
     // For bot messages, just render as markdown
     return <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>;
+  };
+
+  // Render source files for bot messages
+  const renderSourceFiles = (sourceFiles: string[]) => {
+    if (!sourceFiles || sourceFiles.length === 0) return null;
+
+    // Deduplicate source files while preserving order
+    const uniqueFiles = sourceFiles.filter((file, index, arr) => arr.indexOf(file) === index);
+
+    return (
+      <div className="mt-2 pt-2 border-t border-gray-600">
+        <div className="text-xs text-gray-400 mb-1">📄 Sources:</div>
+        <div className="flex flex-wrap gap-1">
+          {uniqueFiles.map((filePath, index) => (
+            <button
+              key={`${filePath}-${index}`}
+              onClick={() => handleSourceFileClick(filePath)}
+              className="text-xs bg-gray-600 hover:bg-gray-500 text-gray-200 px-2 py-1 rounded font-mono transition-colors"
+              title={`Click to open ${filePath}`}
+            >
+              {filePath.split('/').pop()}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -568,6 +671,7 @@ export default function Chat() {
                 }`}
                 >
                 {renderMessageWithHighlights(msg.text, msg.sender === "user")}
+                {msg.sender === "bot" && renderSourceFiles(msg.sourceFiles || [])}
               </div>
             ))}
           </div>

@@ -192,7 +192,11 @@ Provide a detailed explanation focusing on the tagged files:"""
 
             response = llm.invoke(prompt)
             answer = response.content.strip()
-            answer += f"\n\n📄 Analyzed {len(tagged_files)} tagged files."
+
+            return jsonify({
+                "response": answer,
+                "source_files": tagged_files
+            })
 
         else:
             # Original chunk-based search logic
@@ -223,6 +227,10 @@ Provide a detailed explanation focusing on the tagged files:"""
             if not hits:
                 return jsonify({"response": "No results found."})
 
+            # Extract unique file paths from search results and deduplicate
+            all_source_files = [hit["_source"].get("file_path", "") for hit in hits if hit["_source"].get("file_path")]
+            source_files = list(dict.fromkeys(all_source_files))  # Preserve order while removing duplicates
+
             context = "\n\n".join(
                 [hit["_source"].get("content", "No content") for hit in hits])
 
@@ -248,9 +256,11 @@ Answer:"""
 
             response = llm.invoke(prompt)
             answer = response.content.strip()
-            answer += f"\n\n📊 Used {len(hits)} code chunks as sources."
 
-        return jsonify({"response": answer})
+            return jsonify({
+                "response": answer,
+                "source_files": source_files
+            })
 
     except Exception as e:
         return jsonify({"status": "error", "message": f"Query failed: {str(e)}"}), 500
