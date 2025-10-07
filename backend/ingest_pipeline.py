@@ -55,29 +55,14 @@ INDEX_DEFINITION = {
     }
 }
 
-# Mock embeddings for testing when OpenAI has compatibility issues
-class MockOpenAIEmbeddings:
-    """Mock embeddings class for testing when OpenAI has compatibility issues."""
-
-    def __init__(self, model="text-embedding-ada-002", api_key=None):
-        self.model = model
-        self.api_key = api_key
-
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        """Generate mock embeddings for testing."""
-        return [[random.random() for _ in range(1536)] for _ in texts]  # ada-002 is 1536
-
-    def embed_query(self, text: str) -> List[float]:
-        """Generate mock embedding for a single query."""
-        return [random.random() for _ in range(1536)]
-
-# Try to import OpenAI, fall back to mock if it fails
 try:
     from langchain_openai import OpenAIEmbeddings
+    OPENAI_AVAILABLE = True
     print("Using real OpenAI embeddings")
-except Exception as e:
-    print(f"Warning: OpenAI not available ({e}), using mock embeddings for testing")
-    OpenAIEmbeddings = MockOpenAIEmbeddings
+except ImportError:
+    OPENAI_AVAILABLE = False
+    OpenAIEmbeddings = None
+    print("Warning: OpenAI not available, embeddings will be skipped")
 
 def generate_chunk_id(owner: str, repo: str, file_path: str, content: str) -> str:
     """Generate a unique ID for a code chunk based on repository and content."""
@@ -274,7 +259,7 @@ def search_similar_chunks(query: str, repo_filter: str = None, top_k: int = 5) -
         should_clauses: List[Dict[str, Any]] = []
         query_embedding = None
 
-        if OPENAI_API_KEY:
+        if OPENAI_API_KEY and OPENAI_AVAILABLE:
             if ensure_index(es, recreate_if_invalid=False):
                 embeddings_model = OpenAIEmbeddings(
                     model="text-embedding-ada-002",
@@ -386,8 +371,11 @@ def ingest_github_repo(github_url: str):
     except Exception as e:
         print(f"Warning: Failed to clear existing chunks: {e}")
 
-    if not OPENAI_API_KEY:
-        print("Warning: OPENAI_API_KEY not found. Skipping embeddings.")
+    if not OPENAI_API_KEY or not OPENAI_AVAILABLE:
+        if not OPENAI_API_KEY:
+            print("Warning: OPENAI_API_KEY not found. Skipping embeddings.")
+        else:
+            print("Warning: OpenAI embeddings library not available. Skipping embeddings.")
         return
 
     # Initialize the OpenAI embeddings model for generating vector representations
