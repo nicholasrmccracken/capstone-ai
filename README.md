@@ -76,7 +76,36 @@ Once running, visit http://localhost:9200 to see Elasticsearch status. You shoul
 git clone <your-repo>
 cd capstone-ai
 
-# Create .env with API keys
+# Create .env with API keys (see sample template below)
+```
+
+**Sample .env file template:**
+```env
+# GitHub API
+GITHUB_TOKEN=ghp_your_github_token_here
+
+# AI API Configurations (use OpenAI)
+OPENAI_API_KEY=your_openai_api_key_here
+
+# Elasticsearch Configuration
+# For local Elasticsearch (recommended for development):
+ES_HOST=http://localhost:9200
+ES_USER=elastic
+ES_PASSWORD=changeme
+
+# For Docker Elasticsearch:
+# ES_HOST=http://localhost:9200
+# ES_USER=elastic
+# ES_PASSWORD=changeme
+
+# For Elastic Cloud (uncomment and update with your cloud credentials):
+# ES_HOST=https://your-deployment-id.es.us-central1.gcp.cloud.es.io:9243
+# ES_USER=your-username
+# ES_PASSWORD=your-password
+```
+
+**Create your .env file:**
+```bash
 echo "GITHUB_TOKEN=ghp_your_token_here" > .env
 echo "OPENAI_API_KEY=your_openai_api_key" >> .env
 ```
@@ -121,4 +150,4 @@ Frontend (Next.js) → Backend (Flask) → LangChain Processing → OpenAI Embed
 
 **Tech Stack**: Python, Flask, OpenAI, LangChain, Elasticsearch, Next.js, Node.js
 Data Flow: GitHub API → Repo Processing → AI Embeddings → Vector Search → Chat Response
-```
+
