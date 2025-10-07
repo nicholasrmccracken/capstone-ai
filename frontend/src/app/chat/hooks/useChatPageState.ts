@@ -146,16 +146,18 @@ const useChatPageState = (): UseChatPageStateResult => {
   );
   const hasOpenTabs = tabs.length > 0;
 
+  const panelTransition =
+    "transition-[flex-basis,max-width,min-width,opacity,transform,padding] duration-500 ease-in-out";
+
   const treePanelClassName = hasOpenTabs
-    ? "flex flex-col p-1 flex-shrink-0 basis-[45%] max-w-[620px] min-w-[300px] transition-all duration-300 ease-in-out"
-    : "flex flex-col p-1 flex-1 min-w-0 transition-all duration-300 ease-in-out";
+    ? `flex flex-col p-1 flex-shrink-0 basis-[45%] max-w-[620px] min-w-[300px] ${panelTransition}`
+    : `flex flex-col p-1 flex-1 min-w-0 grow ${panelTransition}`;
 
   const chatPanelClassName = hasOpenTabs
-    ? "bg-gray-900/70 border border-gray-700 p-6 rounded-xl shadow-lg flex flex-col flex-shrink-0 basis-[45%] min-w-[300px] max-w-[600px]"
-    : "bg-gray-900/70 border border-gray-700 p-6 rounded-xl shadow-lg flex flex-col flex-shrink-0 flex-1 min-w-0";
+    ? `bg-gray-900/70 border border-gray-700 p-6 rounded-xl shadow-lg flex flex-col flex-shrink-0 basis-[40%] max-w-[55%] min-w-[300px] grow-0 ${panelTransition}`
+    : `bg-gray-900/70 border border-gray-700 p-6 rounded-xl shadow-lg flex flex-col flex-shrink-0 basis-[60%] max-w-[75%] min-w-[320px] grow ${panelTransition}`;
 
-  const codeViewerWrapperClassName =
-    "flex flex-col transition-all duration-300 ease-in-out overflow-hidden";
+  const codeViewerWrapperBase = `flex flex-col overflow-hidden ${panelTransition}`;
 
   useEffect(() => {
     if (chatMessagesRef.current) {
@@ -796,10 +798,10 @@ const useChatPageState = (): UseChatPageStateResult => {
   const layout: LayoutConfig = {
     treePanelClassName,
     chatPanelClassName,
-    codeViewerWrapperClassName: `${codeViewerWrapperClassName} ${
+    codeViewerWrapperClassName: `${codeViewerWrapperBase} ${
       hasOpenTabs
-        ? "flex-[1.6] opacity-100 translate-x-0 pt-2 pr-2 pb-2 pl-0 max-w-full min-w-0"
-        : "flex-[0] opacity-0 -translate-x-4 max-w-0 p-0 pointer-events-none"
+        ? "basis-[45%] max-w-[55%] min-w-0 opacity-100 translate-x-0 pt-2 pr-2 pb-2 pl-0 grow"
+        : "basis-0 max-w-0 min-w-0 opacity-0 -translate-x-4 p-0 pointer-events-none grow-0"
     }`,
     codeViewerVisible: isCodeViewerMounted || hasOpenTabs,
     codeViewerAriaHidden: !hasOpenTabs,
@@ -883,3 +885,4 @@ const useChatPageState = (): UseChatPageStateResult => {
 };
 
 export default useChatPageState;
+
