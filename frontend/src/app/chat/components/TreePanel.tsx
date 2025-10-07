@@ -24,7 +24,7 @@ interface TreePanelProps {
   onToggleExpandAll: () => void;
   hasDirectories: boolean;
   isFullyExpanded: boolean;
-  treeContainerRef: RefObject<HTMLDivElement>;
+  treeContainerRef: RefObject<HTMLDivElement | null>;
 }
 
 interface TreeNodeProps {
@@ -79,7 +79,9 @@ const TreeNode = memo(
           return (
             <div key={itemPath}>
               <div className="flex items-center space-x-2">
-                <span className="text-gray-500 select-none">{connector}</span>
+                <span className="text-gray-500 select-none font-mono whitespace-pre">
+                  {connector}
+                </span>
                 {isDirectory ? (
                   <button
                     type="button"

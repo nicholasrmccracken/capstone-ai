@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   ChangeEvent,
@@ -50,7 +50,7 @@ export interface TreePanelBinding {
   onToggleExpandAll: () => void;
   hasDirectories: boolean;
   isFullyExpanded: boolean;
-  treeContainerRef: RefObject<HTMLDivElement>;
+  treeContainerRef: RefObject<HTMLDivElement | null>;
 }
 
 export interface CodeViewerBinding {
@@ -69,10 +69,10 @@ export interface CodeViewerBinding {
 
 export interface ChatPanelBinding {
   messages: Message[];
-  chatMessagesRef: RefObject<HTMLDivElement>;
+  chatMessagesRef: RefObject<HTMLDivElement | null>;
   onSourceFileClick: (filePath: string) => void;
   onClearChatClick: () => void;
-  inputRef: RefObject<HTMLInputElement>;
+  inputRef: RefObject<HTMLInputElement | null>;
   inputMessage: string;
   onInputChange: (event: ChangeEvent<HTMLInputElement>) => void;
   onInputKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void;
@@ -226,7 +226,7 @@ const useChatPageState = (): UseChatPageStateResult => {
         ...prev,
         {
           sender: "bot",
-          text: "🛰️ Thanks! That looks like a valid GitHub repository. Starting ingestion...",
+          text: "\u{1F680} Thanks! That looks like a valid GitHub repository. Starting ingestion...",
           sourceFiles: [],
         },
       ]);
@@ -246,7 +246,7 @@ const useChatPageState = (): UseChatPageStateResult => {
             ...prev,
             {
               sender: "bot",
-              text: "🛰️ Repository ingestion complete. You can now ask questions about the repo.",
+              text: "\u2705 Repository ingestion complete. You can now ask questions about the repo.",
               sourceFiles: [],
             },
           ]);
@@ -255,7 +255,7 @@ const useChatPageState = (): UseChatPageStateResult => {
             ...prev,
             {
               sender: "bot",
-              text: `⚠️ ${data.message || "Error starting ingestion"}`,
+              text: `ΓÜá∩╕Å ${data.message || "Error starting ingestion"}`,
               sourceFiles: [],
             },
           ]);
@@ -265,7 +265,7 @@ const useChatPageState = (): UseChatPageStateResult => {
           ...prev,
           {
             sender: "bot",
-            text: "⚠️ Error connecting to backend. Please try again later.",
+            text: "ΓÜá∩╕Å Error connecting to backend. Please try again later.",
             sourceFiles: [],
           },
         ]);
@@ -393,7 +393,7 @@ const useChatPageState = (): UseChatPageStateResult => {
         ...prev,
         {
           sender: "bot",
-          text: data.response || `⚠️ Error: ${data.message || "Failed to query."}`,
+          text: data.response || `ΓÜá∩╕Å Error: ${data.message || "Failed to query."}`,
           sourceFiles: data.source_files || [],
         },
       ]);
@@ -402,7 +402,7 @@ const useChatPageState = (): UseChatPageStateResult => {
         ...prev,
         {
           sender: "bot",
-          text: "⚠️ Error connecting to backend. Please try again later.",
+          text: "ΓÜá∩╕Å Error connecting to backend. Please try again later.",
           sourceFiles: [],
         },
       ]);
@@ -486,7 +486,7 @@ const useChatPageState = (): UseChatPageStateResult => {
             ...prev,
             {
               sender: "bot",
-              text: `⚠️ File "${expectedPath}" not found in current repository. It may be from a different repository or the path may have changed.`,
+              text: `ΓÜá∩╕Å File "${expectedPath}" not found in current repository. It may be from a different repository or the path may have changed.`,
               sourceFiles: [],
             },
           ]);
@@ -508,7 +508,7 @@ const useChatPageState = (): UseChatPageStateResult => {
         ...prev,
         {
           sender: "bot",
-          text: `⚠️ Failed to fetch file content for "${expectedPath}": ${error.message}. This file may not exist in the current repository.`,
+          text: `ΓÜá∩╕Å Failed to fetch file content for "${expectedPath}": ${error.message}. This file may not exist in the current repository.`,
           sourceFiles: [],
         },
       ]);
@@ -755,7 +755,7 @@ const useChatPageState = (): UseChatPageStateResult => {
           ...prev,
           {
             sender: "bot",
-            text: `🛰️ ${data.message}`,
+            text: `≡ƒ¢░∩╕Å ${data.message}`,
             sourceFiles: [],
           },
         ]);
@@ -775,7 +775,7 @@ const useChatPageState = (): UseChatPageStateResult => {
           ...prev,
           {
             sender: "bot",
-            text: `⚠️ ${data.message}`,
+            text: `ΓÜá∩╕Å ${data.message}`,
             sourceFiles: [],
           },
         ]);
@@ -785,7 +785,7 @@ const useChatPageState = (): UseChatPageStateResult => {
         ...prev,
         {
           sender: "bot",
-          text: "⚠️ Error connecting to backend. Please try again later.",
+          text: "ΓÜá∩╕Å Error connecting to backend. Please try again later.",
           sourceFiles: [],
         },
       ]);
@@ -885,4 +885,25 @@ const useChatPageState = (): UseChatPageStateResult => {
 };
 
 export default useChatPageState;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

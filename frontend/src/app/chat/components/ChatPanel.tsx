@@ -7,10 +7,10 @@ interface ChatPanelProps {
   className: string;
   title?: string;
   messages: Message[];
-  chatMessagesRef: RefObject<HTMLDivElement>;
+  chatMessagesRef: RefObject<HTMLDivElement | null>;
   onSourceFileClick: (filePath: string) => void;
   onClearChatClick: () => void;
-  inputRef: RefObject<HTMLInputElement>;
+  inputRef: RefObject<HTMLInputElement | null>;
   inputMessage: string;
   onInputChange: (event: ChangeEvent<HTMLInputElement>) => void;
   onInputKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void;

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { RefObject } from "react";
@@ -6,7 +6,7 @@ import type { Message } from "../types";
 
 interface ChatMessagesProps {
   messages: Message[];
-  chatMessagesRef: RefObject<HTMLDivElement>;
+  chatMessagesRef: RefObject<HTMLDivElement | null>;
   onSourceFileClick: (filePath: string) => void;
 }
 
@@ -76,4 +76,5 @@ const ChatMessages = ({ messages, chatMessagesRef, onSourceFileClick }: ChatMess
 );
 
 export default ChatMessages;
+
 
