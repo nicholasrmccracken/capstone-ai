@@ -1,0 +1,108 @@
+"use client";
+import type { ChangeEvent, FormEvent, KeyboardEvent, RefObject } from "react";
+import ChatMessages from "./ChatMessages";
+import type { Message } from "../types";
+
+interface ChatPanelProps {
+  className: string;
+  title?: string;
+  messages: Message[];
+  chatMessagesRef: RefObject<HTMLDivElement>;
+  onSourceFileClick: (filePath: string) => void;
+  onClearChatClick: () => void;
+  inputRef: RefObject<HTMLInputElement>;
+  inputMessage: string;
+  onInputChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  onInputKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  repoUrl: string;
+  showAutocomplete: boolean;
+  autocompleteOptions: string[];
+  autocompleteIndex: number;
+  onAutocompleteSelect: (option: string) => void;
+}
+
+const ChatPanel = ({
+  className,
+  title = "Conversation",
+  messages,
+  chatMessagesRef,
+  onSourceFileClick,
+  onClearChatClick,
+  inputRef,
+  inputMessage,
+  onInputChange,
+  onInputKeyDown,
+  onSubmit,
+  repoUrl,
+  showAutocomplete,
+  autocompleteOptions,
+  autocompleteIndex,
+  onAutocompleteSelect,
+}: ChatPanelProps) => (
+  <div className={className}>
+    <div className="flex items-center justify-between mb-3">
+      <h3 className="text-lg font-semibold text-gray-200">{title}</h3>
+      <button
+        type="button"
+        onClick={onClearChatClick}
+        className="px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-gray-100 rounded-lg transition-colors border border-gray-600"
+      >
+        Clear Chat
+      </button>
+    </div>
+
+    <ChatMessages
+      messages={messages}
+      chatMessagesRef={chatMessagesRef}
+      onSourceFileClick={onSourceFileClick}
+    />
+
+    <div className="relative">
+      <form onSubmit={onSubmit} className="flex gap-2 mt-4">
+        <input
+          ref={inputRef}
+          type="text"
+          value={inputMessage}
+          onChange={onInputChange}
+          onKeyDown={onInputKeyDown}
+          placeholder={
+            repoUrl
+              ? "Ask a question about the repo or use @filename..."
+              : "First enter a repo URL above"
+          }
+          className="flex-1 p-3 border border-gray-600 bg-gray-800 text-white rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          disabled={!repoUrl}
+        />
+        <button
+          type="submit"
+          className="px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-all"
+          disabled={!repoUrl}
+        >
+          Send
+        </button>
+      </form>
+      {showAutocomplete && autocompleteOptions.length > 0 && (
+        <div className="absolute bottom-full left-0 right-0 bg-gray-800 border border-gray-600 rounded-lg shadow-lg mb-1 max-h-32 overflow-y-auto z-[99999]">
+          {autocompleteOptions.map((option, index) => (
+            <button
+              type="button"
+              key={option}
+              className={`w-full text-left p-2 cursor-pointer border-l-2 ${
+                index === autocompleteIndex
+                  ? "bg-blue-600 text-white border-blue-400"
+                  : "text-gray-300 hover:bg-gray-700 border-transparent"
+              }`}
+              onClick={() => onAutocompleteSelect(option)}
+            >
+              <span className="font-mono text-sm">{option}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  </div>
+);
+
+export default ChatPanel;
+
