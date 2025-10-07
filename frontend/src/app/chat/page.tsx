@@ -13,6 +13,25 @@ interface Message {
   sourceFiles: string[];
 }
 
+interface Tab {
+  id: number;
+  name: string;
+  color: string;
+  filePath: string | null;
+  fileContent: string | null;
+}
+
+interface TreeNodeProps {
+  structure: TreeStructure;
+  parentPath?: string[];
+  prefix?: string;
+  expandedNodes: Set<string>;
+  selectedItems: string[];
+  fileColors: Map<string, string>;
+  onFolderClick: (name: string, currentParentPath: string[], e: React.MouseEvent) => void;
+  onFileClick: (name: string, parentPath: string[], e: React.MouseEvent) => void;
+}
+
 const getAllDirectoryPaths = (
   structure: TreeStructure,
   parentPath: string[] = []
@@ -59,11 +78,6 @@ export default function Chat() {
   ]);
   const [inputMessage, setInputMessage] = useState("");
   const [treeStructure, setTreeStructure] = useState<TreeStructure | null>(null);
-  const [currentPath, setCurrentPath] = useState<string[]>([]);
-  const [viewMode, setViewMode] = useState<"tree" | "file">("tree");
-  const [fileContent, setFileContent] = useState<string | null>(null);
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [repoDetails, setRepoDetails] = useState({ owner: "", repo: "", defaultBranch: "" });
   const [isLoadingTree, setIsLoadingTree] = useState(false);
   const [treeError, setTreeError] = useState<string | null>(null);
@@ -78,6 +92,14 @@ export default function Chat() {
   const inputRef = useRef<HTMLInputElement>(null);
   const treeContainerRef = useRef<HTMLDivElement>(null);
   const chatMessagesRef = useRef<HTMLDivElement>(null);
+  const [treeCurrentPath, setTreeCurrentPath] = useState<string[]>([]);
+  const [treeSelectedItems, setTreeSelectedItems] = useState<string[]>([]);
+  const [tabs, setTabs] = useState<Tab[]>([]);
+  const [activeTabId, setActiveTabId] = useState<number>(0);
+  const [nextTabId, setNextTabId] = useState(1);
+  const [fileColors, setFileColors] = useState<Map<string, string>>(new Map());
+
+  const activeTab = useMemo(() => tabs.find((t) => t.id === activeTabId), [tabs, activeTabId]);
 
   // Auto-scroll chat to bottom when new messages are added
   useEffect(() => {
@@ -94,12 +116,6 @@ export default function Chat() {
     setIsLoadingTree(true);
     setTreeError(null);
     setTreeStructure(null);
-    setCurrentPath([]);
-    setViewMode("tree");
-    setFileContent(null);
-    setSelectedFile(null);
-    setSelectedItems([]);
-    setExpandedNodes(new Set());
     try {
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
       const response = await fetch(`${backendUrl}/api/get_tree`, {
@@ -320,8 +336,10 @@ export default function Chat() {
   };
 
   const getCurrentStructure = (): TreeStructure => {
+    if (!treeStructure) return {};
+
     let current = treeStructure;
-    for (const part of currentPath) {
+    for (const part of treeCurrentPath) {
       current = current?.[part] as TreeStructure;
     }
     return current || {};
@@ -329,38 +347,38 @@ export default function Chat() {
 
   const handleFolderClick = (name: string, currentParentPath: string[], e: React.MouseEvent) => {
     const itemPath = [...currentParentPath, name].join("/");
+    
     if (e.metaKey) {
-      setSelectedItems((prev) =>
-        prev.includes(itemPath) ? prev.filter((item) => item !== itemPath) : [...prev, itemPath]
-      );
-    } else if (e.detail === 2) {
-      setCurrentPath([...currentParentPath, name]);
-    } else if (e.detail === 1) {
-      setExpandedNodes((prev) => {
-        const newSet = new Set(prev);
-        if (newSet.has(itemPath)) {
-          newSet.delete(itemPath);
-        } else {
-          newSet.add(itemPath);
-        }
-        return newSet;
-      });
+      const newSelectedItems = treeSelectedItems.includes(itemPath)
+        ? treeSelectedItems.filter((item) => item !== itemPath)
+        : [...treeSelectedItems, itemPath];
+      setTreeSelectedItems(newSelectedItems);
+      return; // Stop further processing
+    }
+  
+    // Handle double-click to enter directory
+    if (e.detail === 2) {
+      setTreeCurrentPath([...currentParentPath, name]);
+    } 
+    // Handle single-click to expand/collapse
+    else if (e.detail === 1) {
+      const newExpandedNodes = new Set(expandedNodes);
+      if (newExpandedNodes.has(itemPath)) {
+        newExpandedNodes.delete(itemPath);
+      } else {
+        newExpandedNodes.add(itemPath);
+      }
+      setExpandedNodes(newExpandedNodes);
     }
   };
 
-  const handleBackClick = () => {
-    if (viewMode === "file") {
-      setViewMode("tree");
-      setFileContent(null);
-      setSelectedFile(null);
-    } else if (currentPath.length > 0) {
-      setCurrentPath(currentPath.slice(0, -1));
-      setSelectedFile(null);
-      setSelectedItems([]);
+  const handleTreeBackClick = () => {
+    if (treeCurrentPath.length > 0) {
+      setTreeCurrentPath(treeCurrentPath.slice(0, -1));
     }
   };
 
-  const fetchFileContent = async (filePath: string) => {
+  const fetchFileContent = async (expectedPath: string, tabId: number) => {
     try {
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
       const response = await fetch(`${backendUrl}/api/get_file_content`, {
@@ -370,16 +388,16 @@ export default function Chat() {
           owner: repoDetails.owner,
           repo: repoDetails.repo,
           branch: repoDetails.defaultBranch,
-          path: filePath,
+          path: expectedPath,
         }),
       });
 
       if (!response.ok) {
         if (response.status === 404) {
-          console.log(`File not found in current repository: ${filePath}`);
+          console.log(`File not found in current repository: ${expectedPath}`);
           setMessages((prev) => [
             ...prev,
-            { sender: "bot", text: `❌ File "${filePath}" not found in current repository. It may be from a different repository or the path may have changed.`, sourceFiles: [] },
+            { sender: "bot", text: `❌ File "${expectedPath}" not found in current repository. It may be from a different repository or the path may have changed.`, sourceFiles: [] },
           ]);
           return;
         }
@@ -387,35 +405,161 @@ export default function Chat() {
       }
 
       const data = await response.json();
-      setFileContent(data.content);
-      setViewMode("file");
-      treeContainerRef.current?.scrollTo(0, 0);
-    } catch (error) {
+      setTabs((prevTabs) =>
+        prevTabs.map((t) =>
+          t.id === tabId && t.filePath === expectedPath ? { ...t, fileContent: data.content } : t
+        )
+      );
+    } catch (error: any) {
       console.error("Error fetching file content:", error);
       setMessages((prev) => [
         ...prev,
-        { sender: "bot", text: `❌ Failed to fetch file content for "${filePath}": ${error}. This file may not exist in the current repository.`, sourceFiles: [] },
+        { sender: "bot", text: `❌ Failed to fetch file content for "${expectedPath}": ${error.message}. This file may not exist in the current repository.`, sourceFiles: [] },
       ]);
     }
   };
 
   const handleFileClick = (name: string, parentPath: string[], e: React.MouseEvent) => {
     const filePath = [...parentPath, name].join("/");
+  
     if (e.metaKey) {
-      setSelectedItems((prev) =>
-        prev.includes(filePath) ? prev.filter((item) => item !== filePath) : [...prev, filePath]
-      );
-    } else {
-      setSelectedItems([filePath]);
-    setSelectedFile(filePath);
-    fetchFileContent(filePath);
+      const newSelectedItems = treeSelectedItems.includes(filePath)
+        ? treeSelectedItems.filter((item) => item !== filePath)
+        : [...treeSelectedItems, filePath];
+      setTreeSelectedItems(newSelectedItems);
+      return; // Stop further processing
     }
+    // Single click opens in base pinned tab
+    if (e.detail === 1) {
+      if (tabs.length === 0 || !activeTab) {
+        addFileTab(filePath);
+      } else {
+        handleOpenFileInTab(activeTabId, filePath);
+      }
+    }
+  };
+
+  const addFileTab = (filePath: string) => {
+    const name = filePath.split('/').pop() || "File";
+    const colors = ["green", "yellow", "pink", "indigo"];
+    const color = colors[(nextTabId - 1) % colors.length];
+    const newTab: Tab = {
+      id: nextTabId,
+      name,
+      color,
+      filePath,
+      fileContent: "Loading...",
+    };
+    setTabs([...tabs, newTab]);
+    setActiveTabId(nextTabId);
+    setNextTabId(nextTabId + 1);
+    fetchFileContent(filePath, newTab.id);
+    if (!fileColors.has(filePath)) {
+      setFileColors((prev) => new Map(prev).set(filePath, color));
+    }
+  };
+
+  const handleOpenFileInTab = (tabId: number, filePath: string) => {
+    const tab = tabs.find((t) => t.id === tabId);
+    if (!tab) return;
+    const oldPath = tab.filePath;
+    const name = filePath.split('/').pop() || "File";
+    let color = tab.color;
+    if (tab.color === "gray") {
+      const colors = ["green", "yellow", "pink", "indigo"];
+      color = colors[(tabs.length) % colors.length];
+    }
+    setTabs(
+      tabs.map((t) =>
+        t.id === tabId ? { ...t, name, color, filePath, fileContent: "Loading..." } : t
+      )
+    );
+    fetchFileContent(filePath, tabId);
+    if (oldPath && oldPath !== filePath) {
+      const remainingOld = tabs.filter(
+        (t) => t.id !== tabId && t.filePath === oldPath
+      ).length;
+      if (remainingOld === 0) {
+        setFileColors((prev) => {
+          const newM = new Map(prev);
+          newM.delete(oldPath);
+          return newM;
+        });
+      }
+    }
+    const remainingNew = tabs.filter(
+      (t) => t.id !== tabId && t.filePath === filePath
+    ).length;
+    if (remainingNew === 0 && !fileColors.has(filePath)) {
+      setFileColors((prev) => new Map(prev).set(filePath, color));
+    }
+  };
+
+  const addNewBlankTab = () => {
+    const newId = nextTabId;
+    const color = "gray";
+    const newTab: Tab = {
+      id: newId,
+      name: "Untitled",
+      color,
+      filePath: null,
+      fileContent: null,
+    };
+    setTabs([...tabs, newTab]);
+    setActiveTabId(newId);
+    setNextTabId(newId + 1);
+  };
+
+  const closeTab = (id: number) => {
+    const closingTab = tabs.find((t) => t.id === id);
+    const newTabs = tabs.filter((t) => t.id !== id);
+    setTabs(newTabs);
+    if (closingTab?.filePath) {
+      const remaining = newTabs.filter(
+        (t) => t.filePath === closingTab.filePath
+      ).length;
+      if (remaining === 0) {
+        setFileColors((prev) => {
+          const newM = new Map(prev);
+          newM.delete(closingTab.filePath!);
+          return newM;
+        });
+      }
+    }
+    if (activeTabId === id) {
+      setActiveTabId(newTabs.length > 0 ? newTabs[0].id : 0);
+    }
+  };
+
+  const handleDragStart = (e: React.DragEvent, draggedId: number) => {
+    e.dataTransfer.setData("text/plain", draggedId.toString());
+    setActiveTabId(draggedId);
+  };
+  
+  const handleDragOver = (e: React.DragEvent, overId: number) => {
+    e.preventDefault();
+    const draggedId = parseInt(e.dataTransfer.getData("text/plain"), 10);
+    if (draggedId === overId) return;
+    setTabs((prevTabs) => {
+      const newTabs = [...prevTabs];
+      const draggedIndex = newTabs.findIndex((t) => t.id === draggedId);
+      const overIndex = newTabs.findIndex((t) => t.id === overId);
+      if (draggedIndex === -1 || overIndex === -1) return newTabs;
+      // Swap positions
+      const [draggedTab] = newTabs.splice(draggedIndex, 1);
+      newTabs.splice(overIndex, 0, draggedTab);
+      return newTabs;
+    });
+  };
+  
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault(); // No additional logic needed; order updated in dragOver
   };
 
   // Toggle between expanding and collapsing all nodes
   const handleToggleExpandAll = () => {
     if (!treeStructure) return;
-    const allPaths = getAllDirectoryPaths(getCurrentStructure(), currentPath);
+    const allPaths = getAllDirectoryPaths(getCurrentStructure(), treeCurrentPath);
     // If not all nodes are expanded, expand them all. Otherwise, collapse them.
     if (expandedNodes.size < allPaths.length) {
       setExpandedNodes(new Set(allPaths));
@@ -449,12 +593,13 @@ export default function Chat() {
         setTreeStructure(null);
         setRepoUrl("");
         setUrl("");
-        setCurrentPath([]);
-        setViewMode("tree");
-        setFileContent(null);
-        setSelectedFile(null);
-        setSelectedItems([]);
+        setTreeCurrentPath([]);
+        setTabs([]);
+        setActiveTabId(0);
+        setNextTabId(1);
+        setFileColors(new Map());
         setExpandedNodes(new Set());
+        setTreeSelectedItems([]);
         setAllFilePaths([]);
       } else {
         setMessages((prev) => [
@@ -481,12 +626,15 @@ export default function Chat() {
     }
   };
 
-  const TreeNode = ({ structure, parentPath = [], prefix = "" }: {
-    structure: TreeStructure;
-    parentPath?: string[];
-    prefix?: string;
-  }) => {
-    const entries = Object.entries(structure);
+  const TreeNode = ({ structure, parentPath = [], prefix = "", expandedNodes, selectedItems, fileColors, onFolderClick, onFileClick }: TreeNodeProps) => {
+    const entries = Object.entries(structure).sort((a, b) => {
+      const aIsDir = typeof a[1] === "object" && a[1] !== null;
+      const bIsDir = typeof b[1] === "object" && b[1] !== null;
+      if (aIsDir && !bIsDir) return -1;
+      if (!aIsDir && bIsDir) return 1;
+      return a[0].localeCompare(b[0]);
+    });
+  
     return (
       <>
         {entries.map(([name, value], index) => {
@@ -495,29 +643,33 @@ export default function Chat() {
           const isDir = typeof value === "object" && value !== null;
           const itemPath = [...parentPath, name].join("/");
           const isExpanded = expandedNodes.has(itemPath);
-
+          const isSelected = selectedItems.includes(itemPath);
+          const fileColor = !isDir ? fileColors.get(itemPath) : undefined;
+  
           return (
-            <div key={name} className="cursor-pointer tree-node" style={{ marginBottom: '0.1rem' }}>
+            <div key={itemPath} className="cursor-pointer tree-node" style={{ marginBottom: '0.1rem' }}>
               <div className="flex items-center">
                 <div className="flex font-mono whitespace-pre ascii-connector">
                   {prefix.match(/.{1,3}/g)?.map((segment, i) => (
-                    <span key={i}>{segment}</span>
+                    <span key={`${itemPath}-${i}`}>{segment}</span>
                   ))}
                   <span>{connector}</span>
                 </div>
-              {isDir ? (
-                  <span onClick={(e) => handleFolderClick(name, parentPath, e)}
-                    className={`hover:underline ${selectedItems.includes(itemPath) ? "bg-blue-600 text-blue-200 px-1 rounded" : "text-blue-400"}`}>
-                    {name}/ {isExpanded ? '[-]' : '[+]'}
-                </span>
-              ) : (
+                {isDir ? (
                   <span
-                    onClick={(e) => handleFileClick(name, parentPath, e)}
-                    className={`hover:underline ${selectedItems.includes(itemPath) || selectedFile === itemPath ? "bg-yellow-600 text-white px-1 rounded" : ""}`}
+                    onClick={(e) => onFolderClick(name, parentPath, e)}
+                    className={`hover:underline ${isSelected ? "bg-blue-600 text-blue-200 px-1 rounded" : "text-blue-400"}`}
+                  >
+                    {name}/ {isExpanded ? '[-]' : '[+]'}
+                  </span>
+                ) : (
+                  <span
+                    onClick={(e) => onFileClick(name, parentPath, e)}
+                    className={`hover:underline ${isSelected ? "bg-yellow-600 text-white px-1 rounded" : ""} ${fileColor ? `text-${fileColor}-400` : ""}`}
                     data-file-path={itemPath}
                   >
-                  {name}
-                </span>
+                    {name}
+                  </span>
                 )}
               </div>
               {isDir && isExpanded && (
@@ -525,6 +677,11 @@ export default function Chat() {
                   structure={value as TreeStructure}
                   parentPath={[...parentPath, name]}
                   prefix={prefix + (isLast ? '   ' : '├  ')}
+                  expandedNodes={expandedNodes}
+                  selectedItems={selectedItems}
+                  fileColors={fileColors}
+                  onFolderClick={onFolderClick}
+                  onFileClick={onFileClick}
                 />
               )}
             </div>
@@ -533,89 +690,86 @@ export default function Chat() {
       </>
     );
   };
-
-  const renderFileContentWithLines = () => {
-    if (!fileContent) return null;
-    const lines = fileContent.split('\n');
+  
+  const renderFileContentWithLines = (content: string | null) => {
+    if (!content) return <p>Loading...</p>;
+    const lines = content.split('\n');
     return (
-      <pre className="text-sm text-gray-300 font-mono whitespace-pre overflow-auto">
+      <pre className="text-sm text-gray-300 font-mono whitespace-pre overflow-x-scroll max-w-none">
         {lines.map((line, index) => (
-          <div key={index} className="flex">
-            <span className="inline-block w-8 text-right pr-2 select-none text-gray-500">{index + 1}</span>
-            <span>{line}</span>
+          <div key={index} className="flex min-w-0">
+            <span className="inline-block w-8 text-right pr-2 select-none text-gray-500 flex-shrink-0">
+              {index + 1}
+            </span>
+            <span className="whitespace-nowrap inline-block">{line}</span> {/* Prevent wrapping */}
           </div>
         ))}
       </pre>
     );
   };
-
+  
   const renderTree = () => {
-    const rootName = currentPath.length === 0 ? repoDetails.repo : currentPath[currentPath.length - 1];
+    const rootName = treeCurrentPath.length === 0 ? repoDetails.repo : treeCurrentPath[treeCurrentPath.length - 1];
     return (
       <div className="text-sm text-gray-300 font-mono">
         <div className="mb-1">
           <span>{rootName}</span>
         </div>
-        <TreeNode structure={getCurrentStructure()} parentPath={currentPath} />
+        <TreeNode
+          structure={getCurrentStructure()}
+          parentPath={treeCurrentPath}
+          expandedNodes={expandedNodes}
+          selectedItems={treeSelectedItems}
+          fileColors={fileColors}
+          onFolderClick={handleFolderClick}
+          onFileClick={handleFileClick}
+        />
       </div>
     );
   };
   
-  // Determine whether all nodes are expanded to determine the button's symbol
   const { allDirectoryPaths, isFullyExpanded } = useMemo(() => {
     if (!treeStructure) return { allDirectoryPaths: [], isFullyExpanded: false };
-    const allPaths = getAllDirectoryPaths(getCurrentStructure(), currentPath);
+    const allPaths = getAllDirectoryPaths(getCurrentStructure(), treeCurrentPath);
     const fullyExpanded = allPaths.length > 0 && expandedNodes.size === allPaths.length;
     return { allDirectoryPaths: allPaths, isFullyExpanded: fullyExpanded };
-  }, [treeStructure, currentPath, expandedNodes]);
+  }, [treeStructure, treeCurrentPath, expandedNodes]);
 
   // Handle clicking on source file links
   const handleSourceFileClick = (filePath: string) => {
-    console.log("Source file clicked:", filePath);
-    console.log("Available file paths:", allFilePaths.length, "files");
-    console.log("Tree structure exists:", !!treeStructure);
-    console.log("Repo details:", repoDetails);
-
-    // Try to open the file - don't restrict to allFilePaths since source files might be from different contexts
     if (repoDetails.owner && repoDetails.repo && repoDetails.defaultBranch) {
-      setSelectedFile(filePath);
-      setSelectedItems([filePath]);
+      // Open in tab
+      if (tabs.length === 0 || !activeTab) {
+        addFileTab(filePath);
+      } else {
+        handleOpenFileInTab(activeTabId, filePath);
+      }
 
-      // Try to fetch and display the file content directly
-      fetchFileContent(filePath);
-
-      // If we have a tree structure, try to expand parent directories and scroll to the file
+      // Navigate tree to make file visible
       if (treeStructure && allFilePaths.length > 0) {
-        // Try to expand parent directories to make the file visible
         const pathParts = filePath.split('/');
+        const dirParts = pathParts.slice(0, -1);
+        setTreeCurrentPath(dirParts);
+
+        // Expand all ancestor directories
         const parentPaths: string[] = [];
-        for (let i = 1; i < pathParts.length; i++) {
+        for (let i = 1; i <= dirParts.length; i++) {
           parentPaths.push(pathParts.slice(0, i).join('/'));
         }
-
-        // Expand all parent directories
         setExpandedNodes(prev => {
           const newSet = new Set(prev);
           parentPaths.forEach(path => newSet.add(path));
           return newSet;
         });
 
-        // Scroll to make the file visible in the tree (only if it exists in current repo)
+        // Scroll to the file in the tree
         setTimeout(() => {
-          const fileElement = document.querySelector(`[data-file-path="${filePath}"]`);
+          const fileElement = treeContainerRef.current?.querySelector(`[data-file-path="${filePath}"]`);
           if (fileElement) {
             fileElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            console.log("Successfully scrolled to file:", filePath);
-          } else {
-            console.log("File not found in current repository tree:", filePath);
-            console.log("This is normal - source files may be from different repositories");
           }
         }, 100);
-      } else {
-        console.log("No tree structure available or no file paths loaded");
       }
-    } else {
-      console.log("Repository details not available for file opening");
     }
   };
 
@@ -671,75 +825,134 @@ export default function Chat() {
       <h2 className="text-4xl font-bold text-blue-400 drop-shadow-md">
         RepoRover Chat
       </h2>
-      <div className="flex w-full max-w-screen-2xl gap-3" style={{ height: 'calc(100vh - 120px)' }}>
-        <div className="w-1/2 bg-gray-900/70 border border-gray-700 p-6 rounded-xl shadow-lg flex flex-col" style={{ height: '100%' }}>
-          <form onSubmit={handleSubmit} className="flex gap-2 mb-4">
-            <input type="text" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Enter a GitHub repository URL"
-              className="flex-1 p-3 border border-gray-600 bg-gray-800 text-white rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
-            <button type="submit" className="px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-all">Send</button>
-          </form>
-
-          {/* Clear Repositories Button */}
-          <div className="mb-4">
-            <button
-              onClick={() => setShowClearConfirm(true)}
-              className="w-full px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-semibold transition-all flex items-center justify-center gap-2"
-              title="Clear all repositories from Elasticsearch"
-            >
-              Clear Repositories
-            </button>
-          </div>
-
-          {/* --- MODIFIED: Heading and new toggle button are on the same line --- */}
-          <div className="flex justify-between items-center mb-2">
-            <h3 className="text-xl font-bold text-gray-300">Repository Structure</h3>
-            {treeStructure && viewMode === 'tree' && allDirectoryPaths.length > 0 && (
-              <button
-                onClick={handleToggleExpandAll}
-                className="font-mono text-lg text-gray-400 hover:text-white px-2"
-                title="Toggle Expand/Collapse All"
-              >
-                {isFullyExpanded ? '[-]' : '[+]'}
+      <div className="flex w-full max-w-7xl flex-1 gap-4 overflow-hidden">
+        {/* Merged Panel: Repository Structure and Code UI */}
+        <div className="flex flex-1 bg-gray-900/70 border border-gray-700 rounded-xl shadow-lg overflow-hidden">
+          {/* Tree Section */}
+          <div className="flex flex-col p-1 min-w-[200px] max-w-[40%] flex-shrink-0">
+            <form onSubmit={handleSubmit} className="flex gap-2 mb-4">
+              <input
+                type="text"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="Enter a GitHub repository URL"
+                className="flex-1 p-3 border border-gray-600 bg-gray-800 text-white rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button type="submit" className="px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-all">
+                Send
               </button>
-          )}
-          </div>
+            </form>
 
-          <div ref={treeContainerRef} className="flex-1 overflow-auto bg-gray-900 p-4 rounded-md">
-            {isLoadingTree && <p className="text-gray-400">Loading tree...</p>}
-            {treeError && <p className="text-red-400">{treeError}</p>}
-            {treeStructure && (
-              <>
-                {(currentPath.length > 0 || viewMode === "file") && (
-                  <div className="mb-4">
-                  <button
-                    onClick={handleBackClick}
-                      className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm"
-                  >
-                    Back
-                  </button>
-                  </div>
-                )}
-                {viewMode === 'tree' ? renderTree() : renderFileContentWithLines()}
-              </>
-            )}
-            {!isLoadingTree && !treeError && !treeStructure && (
-              <p className="text-gray-500">Enter a repository URL to see its structure here.</p>
-            )}
+            {/* Clear Repositories Button */}
+            <div className="mb-4">
+              <button
+                onClick={() => setShowClearConfirm(true)}
+                className="w-full px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-semibold transition-all flex items-center justify-center gap-2"
+                title="Clear all repositories from Elasticsearch"
+              >
+                Clear Repositories
+              </button>
+            </div>
+
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="text-xl font-bold text-gray-300">Repository Structure</h3>
+              {treeStructure && allDirectoryPaths.length > 0 && (
+                <button
+                  onClick={handleToggleExpandAll}
+                  className="font-mono text-lg text-gray-400 hover:text-white px-2"
+                  title="Toggle Expand/Collapse All"
+                >
+                  {isFullyExpanded ? '[-]' : '[+]'}
+                </button>
+              )}
+            </div>
+  
+            <div ref={treeContainerRef} className="flex-1 overflow-auto bg-gray-900 p-2 rounded-md">
+              {isLoadingTree && <p className="text-gray-400">Loading tree...</p>}
+              {treeError && <p className="text-red-400">{treeError}</p>}
+              {treeStructure && (
+                <>
+                  {treeCurrentPath.length > 0 && (
+                    <div className="mb-4">
+                      <button
+                        onClick={handleTreeBackClick}
+                        className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm"
+                      >
+                        Back
+                      </button>
+                    </div>
+                  )}
+                  {renderTree()}
+                </>
+              )}
+              {!isLoadingTree && !treeError && !treeStructure && (
+                <p className="text-gray-500">Enter a repository URL to see its structure here.</p>
+              )}
+            </div>
+          </div>
+  
+          {/* Code Section */}
+          <div className="flex-1 flex flex-col pt-2 pr-2 pb-2 pl-0 max-w-full">
+          <div className="flex overflow-x-auto border-b border-gray-700 mb-2">
+            {tabs.map((tab) => (
+              <div
+                key={tab.id}
+                draggable // Enable dragging
+                onDragStart={(e) => handleDragStart(e, tab.id)}
+                onDragOver={(e) => handleDragOver(e, tab.id)}
+                onDrop={handleDrop}
+                className={`flex-shrink-0 px-4 py-2 cursor-pointer flex items-center ${
+                  tab.id === activeTabId
+                    ? "bg-gray-800 text-white border-t border-l border-r border-gray-500"
+                    : "text-gray-400"
+                }`}
+                onClick={() => setActiveTabId(tab.id)}
+              >
+                <span className={`text-${tab.color}-400 truncate`}>{tab.name}</span>
+                <span
+                  className="ml-2 text-gray-400 hover:text-white"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    closeTab(tab.id);
+                  }}
+                >
+                  x
+                </span>
+              </div>
+            ))}
+            <div
+              className="flex-shrink-0 px-4 py-2 cursor-pointer text-gray-400"
+              onClick={addNewBlankTab}
+            >
+              +
+            </div>
+          </div>
+          <div className="flex-1 overflow-x-visible overflow-y-auto bg-gray-900 p-0 rounded-md max-w-none">
+             {activeTab ? (
+                activeTab.filePath ? (
+                  renderFileContentWithLines(activeTab.fileContent)
+                ) : (
+                  <p className="text-gray-500 p-2">Select a file by clicking in the explorer to load content here.</p>
+                )
+              ) : (
+                <p className="text-gray-500 p-2">Open a file from the explorer on the left.</p>
+              )}
+            </div>
           </div>
         </div>
-
+  
         {/* Right Panel: Chat Window */}
-        <div className="flex flex-col w-1/2" style={{ height: '100%' }}>
-          <div ref={chatMessagesRef} className="flex-1 bg-gray-900/70 border border-gray-700 p-6 rounded-xl shadow-lg overflow-y-auto">
+        <div className="w-1/4 bg-gray-900/70 border border-gray-700 p-6 rounded-xl shadow-lg flex flex-col min-w-[250px]">
+          <div ref={chatMessagesRef} className="flex-1 overflow-y-auto">
             {messages.map((msg, index) => (
               <div
-              key={index}
-              className={`markdown-content mb-3 p-3 rounded-lg max-w-[95%] mx-auto ${
-                msg.sender === "bot"
-                ? "bg-gray-700 text-gray-200"
-                : "bg-blue-600 text-white"
-                }`}
-                >
+                key={index}
+                className={`markdown-content mb-3 p-3 rounded-lg max-w-[95%] mx-auto ${
+                  msg.sender === "bot"
+                  ? "bg-gray-700 text-gray-200"
+                  : "bg-blue-600 text-white"
+                  }`}
+              >
                 {renderMessageWithHighlights(msg.text, msg.sender === "user")}
                 {msg.sender === "bot" && renderSourceFiles(msg.sourceFiles || [])}
               </div>
@@ -769,39 +982,39 @@ export default function Chat() {
             {showAutocomplete && autocompleteOptions.length > 0 && (() => {
               console.log("Rendering dropdown:", showAutocomplete, autocompleteOptions.length);
               return (
-                <div
-                  className="absolute bottom-full left-0 right-0 bg-gray-800 border border-gray-600 rounded-lg shadow-lg mb-1 max-h-32 overflow-y-auto"
-                  style={{ zIndex: 99999 }}
-                >
-                  {autocompleteOptions.map((option, index) => (
-                    <div
-                      key={option}
-                      className={`p-2 cursor-pointer border-l-2 ${
-                        index === autocompleteIndex
-                          ? "bg-blue-600 text-white border-blue-400"
-                          : "text-gray-300 hover:bg-gray-700 border-transparent"
-                      }`}
-                      onClick={() => {
-                        const selectedPath = option;
-                        const beforeAt = inputMessage.substring(0, atPosition);
-                        const afterAt = inputMessage.substring(atPosition + 1);
-                        const atEnd = afterAt.indexOf(' ') !== -1 ? afterAt.indexOf(' ') : afterAt.length;
-                        const afterSelection = afterAt.substring(atEnd);
-                        const newInput = beforeAt + '@' + selectedPath + afterSelection;
-                        setInputMessage(newInput);
-                        setShowAutocomplete(false);
-                        setTimeout(() => {
-                          if (inputRef.current) {
-                            const newPos = beforeAt.length + selectedPath.length + 1;
-                            inputRef.current.setSelectionRange(newPos, newPos);
-                          }
-                        }, 0);
-                      }}
-                    >
-                      <span className="font-mono text-sm">{option}</span>
-                    </div>
-                  ))}
-                </div>
+              <div
+                className="absolute bottom-full left-0 right-0 bg-gray-800 border border-gray-600 rounded-lg shadow-lg mb-1 max-h-32 overflow-y-auto"
+                style={{ zIndex: 99999 }}
+              >
+                {autocompleteOptions.map((option, index) => (
+                  <div
+                    key={option}
+                    className={`p-2 cursor-pointer border-l-2 ${
+                      index === autocompleteIndex
+                        ? "bg-blue-600 text-white border-blue-400"
+                        : "text-gray-300 hover:bg-gray-700 border-transparent"
+                    }`}
+                    onClick={() => {
+                      const selectedPath = option;
+                      const beforeAt = inputMessage.substring(0, atPosition);
+                      const afterAt = inputMessage.substring(atPosition + 1);
+                      const atEnd = afterAt.indexOf(' ') !== -1 ? afterAt.indexOf(' ') : afterAt.length;
+                      const afterSelection = afterAt.substring(atEnd);
+                      const newInput = beforeAt + '@' + selectedPath + afterSelection;
+                      setInputMessage(newInput);
+                      setShowAutocomplete(false);
+                      setTimeout(() => {
+                        if (inputRef.current) {
+                          const newPos = beforeAt.length + selectedPath.length + 1;
+                          inputRef.current.setSelectionRange(newPos, newPos);
+                        }
+                      }, 0);
+                    }}
+                  >
+                    <span className="font-mono text-sm">{option}</span>
+                  </div>
+                ))}
+              </div>
               );
             })()}
           </div>
