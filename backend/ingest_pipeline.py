@@ -393,12 +393,14 @@ def ingest_github_repo(github_url: str):
         return
 
     # Parallel Processing: Process multiple files concurrently within GitHub rate limits
-    # Use limited concurrency (2-3 threads) to respect GitHub's API rate limits
+    # Use limited concurrency (3-7 threads) to respect GitHub's API rate limits
     all_chunks = []
     all_chunk_metadata = []  # Store (file_path, chunk_metadata) pairs
 
     # Use ThreadPoolExecutor with limited workers to respect GitHub API rate limits
-    max_workers = min(3, len(files))  # Limit to 3 concurrent workers maximum
+    # Adjust if necessary based on actual rate limit observations
+    repo_worker_min_count = 7
+    max_workers = min(repo_worker_min_count, len(files))
     print(f"Processing {len(files)} files with {max_workers} parallel threads...")
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
