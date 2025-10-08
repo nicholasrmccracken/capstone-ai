@@ -1,5 +1,5 @@
 ﻿"use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ChangeEvent,
   DragEvent,
@@ -22,12 +22,31 @@ const createInitialMessages = (): Message[] => [
 const githubRegex =
   /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/?$/;
 
+const API_KEY_STORAGE_KEY = "reporover:openai_api_key";
+const API_KEY_UPDATED_AT_STORAGE_KEY = "reporover:openai_api_key_updated_at";
+const DEBUG_FORCE_ENV_KEY = "reporover:debug_force_env_key";
+const DEBUG_FORCE_USER_KEY = "reporover:debug_force_user_key";
+
 interface LayoutConfig {
   treePanelClassName: string;
-  chatPanelClassName: string;
-  codeViewerWrapperClassName: string;
-  codeViewerVisible: boolean;
-  codeViewerAriaHidden: boolean;
+  hasDirectories: boolean;
+  isFullyExpanded: boolean;
+  treeContainerRef: RefObject<HTMLDivElement | null>;
+  isApiKeySet: boolean;
+  onManageApiKeyClick: () => void;
+}
+
+export interface CodeViewerBinding {
+  tabs: Tab[];
+  activeTabId: number;
+  activeTab?: Tab;
+  onTabSelect: (tabId: number) => void;
+  onTabClose: (tabId: number) => void;
+  onAddBlankTab: () => void;
+  onDragStart: (event: DragEvent, tabId: number) => void;
+  onDragOver: (event: DragEvent) => void;
+  onDrop: (event: DragEvent, targetTabId: number | null) => void;
+  onDragEnd: () => void;
 }
 
 export interface TreePanelBinding {
@@ -51,20 +70,10 @@ export interface TreePanelBinding {
   hasDirectories: boolean;
   isFullyExpanded: boolean;
   treeContainerRef: RefObject<HTMLDivElement | null>;
-}
-
-export interface CodeViewerBinding {
-  className: string;
-  tabs: Tab[];
-  activeTabId: number;
-  activeTab?: Tab;
-  onTabSelect: (tabId: number) => void;
-  onTabClose: (tabId: number) => void;
-  onAddBlankTab: () => void;
-  onDragStart: (event: DragEvent, tabId: number) => void;
-  onDragOver: (event: DragEvent) => void;
-  onDrop: (event: DragEvent, targetTabId: number | null) => void;
-  onDragEnd: () => void;
+  isApiKeySet: boolean;
+  effectiveHasApiKey: boolean;
+  onManageApiKeyClick: () => void;
+  debugForceEnv: boolean;
 }
 
 export interface ChatPanelBinding {
@@ -82,6 +91,9 @@ export interface ChatPanelBinding {
   autocompleteOptions: string[];
   autocompleteIndex: number;
   onAutocompleteSelect: (option: string) => void;
+  isChatEnabled: boolean;
+  inputPlaceholder: string;
+  onManageApiKeyClick: () => void;
 }
 
 export interface ClearChatModalBinding {
@@ -97,6 +109,22 @@ export interface ClearRepositoriesModalBinding {
   onConfirm: () => void;
 }
 
+export interface ApiKeyManagerBinding {
+  hasApiKey: boolean;
+  maskedKey: string;
+  isModalOpen: boolean;
+  currentValue: string;
+  updatedAtLabel: string | null;
+  onOpen: () => void;
+  onClose: () => void;
+  onSave: (value: string) => void;
+  onClear: () => void;
+  debugForceEnv: boolean;
+  debugForceUser: boolean;
+  onToggleDebugForceEnv: () => void;
+  onToggleDebugForceUser: () => void;
+}
+
 interface UseChatPageStateResult {
   layout: LayoutConfig;
   treePanel: TreePanelBinding;
@@ -104,6 +132,7 @@ interface UseChatPageStateResult {
   chatPanel: ChatPanelBinding;
   clearChatModal: ClearChatModalBinding;
   clearRepositoriesModal: ClearRepositoriesModalBinding;
+  apiKeyManager: ApiKeyManagerBinding;
 }
 
 const useChatPageState = (): UseChatPageStateResult => {
@@ -139,12 +168,169 @@ const useChatPageState = (): UseChatPageStateResult => {
   const [fileColors, setFileColors] = useState<Map<string, string>>(new Map());
   const [draggedTabId, setDraggedTabId] = useState<number | null>(null);
   const [isCodeViewerMounted, setIsCodeViewerMounted] = useState(false);
+  const [apiKey, setApiKey] = useState("");
+  const [apiKeyUpdatedAt, setApiKeyUpdatedAt] = useState<string | null>(null);
+  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
+  const [debugForceEnv, setDebugForceEnv] = useState(false);
+  const [debugForceUser, setDebugForceUser] = useState(false);
 
   const activeTab = useMemo(
     () => tabs.find((t) => t.id === activeTabId),
     [tabs, activeTabId]
   );
   const hasOpenTabs = tabs.length > 0;
+
+  const persistApiKey = (value: string) => {
+    if (typeof window === "undefined") return;
+    if (value) {
+      const timestamp = new Date().toISOString();
+      window.localStorage.setItem(API_KEY_STORAGE_KEY, value);
+      window.localStorage.setItem(
+        API_KEY_UPDATED_AT_STORAGE_KEY,
+        timestamp
+      );
+      setApiKeyUpdatedAt(timestamp);
+    } else {
+      window.localStorage.removeItem(API_KEY_STORAGE_KEY);
+      window.localStorage.removeItem(API_KEY_UPDATED_AT_STORAGE_KEY);
+      setApiKeyUpdatedAt(null);
+    }
+  };
+
+  const handleClearApiKey = () => {
+    const hadKey = Boolean(apiKey);
+    setApiKey("");
+    persistApiKey("");
+
+    if (hadKey) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          sender: "bot",
+          text: "🔑 OpenAI API key removed. Add a key to continue ingesting repositories.",
+          sourceFiles: [],
+        },
+      ]);
+    }
+  };
+
+  const toggleDebugForceEnv = () => {
+    const newValue = !debugForceEnv;
+    setDebugForceEnv(newValue);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(DEBUG_FORCE_ENV_KEY, newValue.toString());
+    }
+
+    if (newValue) {
+      setDebugForceUser(false);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(DEBUG_FORCE_USER_KEY, "false");
+      }
+      // Force reload from environment
+      const envApiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
+      if (envApiKey) {
+        setApiKey(envApiKey);
+        setApiKeyUpdatedAt(new Date().toISOString());
+        setMessages((prev) => [
+          ...prev,
+          {
+            sender: "bot",
+            text: "🔧 Debug mode: Now using OpenAI API key from environment variables.",
+            sourceFiles: [],
+          },
+        ]);
+      }
+    } else {
+      setMessages((prev) => [
+        ...prev,
+        {
+          sender: "bot",
+          text: "🔧 Debug mode: Environment key forcing disabled.",
+          sourceFiles: [],
+        },
+      ]);
+    }
+  };
+
+  const toggleDebugForceUser = () => {
+    const newValue = !debugForceUser;
+    setDebugForceUser(newValue);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(DEBUG_FORCE_USER_KEY, newValue.toString());
+    }
+
+    if (newValue) {
+      setDebugForceEnv(false);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(DEBUG_FORCE_ENV_KEY, "false");
+      }
+      // Clear current key to force user input
+      setApiKey("");
+      setApiKeyUpdatedAt(null);
+      setMessages((prev) => [
+        ...prev,
+        {
+          sender: "bot",
+          text: "🔧 Debug mode: Now requiring user input for OpenAI API key.",
+          sourceFiles: [],
+        },
+      ]);
+    } else {
+      setMessages((prev) => [
+        ...prev,
+        {
+          sender: "bot",
+          text: "🔧 Debug mode: User key forcing disabled.",
+          sourceFiles: [],
+        },
+      ]);
+    }
+  };
+
+  const handleSaveApiKey = (value: string) => {
+    const trimmed = value.trim();
+    const hadKey = Boolean(apiKey);
+
+    if (!trimmed) {
+      handleClearApiKey();
+      setIsApiKeyModalOpen(false);
+      return;
+    }
+
+    setApiKey(trimmed);
+    persistApiKey(trimmed);
+    setIsApiKeyModalOpen(false);
+
+    if (!hadKey) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          sender: "bot",
+          text: "🔑 OpenAI API key saved locally. You're ready to ingest repositories.",
+          sourceFiles: [],
+        },
+      ]);
+    }
+  };
+
+  const hasApiKey = Boolean(apiKey.trim());
+  const maskedApiKey = useMemo(() => {
+    if (!hasApiKey) return "";
+    const trimmed = apiKey.trim();
+    if (trimmed.length <= 6) {
+      return `${trimmed[0]}${"•".repeat(Math.max(trimmed.length - 2, 0))}${trimmed.slice(-1)}`;
+    }
+    return `${trimmed.slice(0, 4)}••••${trimmed.slice(-4)}`;
+  }, [apiKey, hasApiKey]);
+
+  const apiKeyUpdatedAtLabel = useMemo(() => {
+    if (!apiKeyUpdatedAt) return null;
+    try {
+      return new Date(apiKeyUpdatedAt).toLocaleString();
+    } catch {
+      return apiKeyUpdatedAt;
+    }
+  }, [apiKeyUpdatedAt]);
 
   const panelTransition =
     "transition-[flex-basis,max-width,min-width,opacity,transform,padding] duration-500 ease-in-out";
@@ -153,11 +339,16 @@ const useChatPageState = (): UseChatPageStateResult => {
     ? `flex flex-col p-1 flex-shrink-0 basis-[45%] max-w-[620px] min-w-[300px] ${panelTransition}`
     : `flex flex-col p-1 flex-1 min-w-0 grow ${panelTransition}`;
 
-  const chatPanelClassName = hasOpenTabs
-    ? `bg-gray-900/70 border border-gray-700 p-6 rounded-xl shadow-lg flex flex-col flex-shrink-0 basis-[40%] max-w-[55%] min-w-[300px] grow-0 ${panelTransition}`
-    : `bg-gray-900/70 border border-gray-700 p-6 rounded-xl shadow-lg flex flex-col flex-shrink-0 basis-[60%] max-w-[75%] min-w-[320px] grow ${panelTransition}`;
+  // When forcing environment variable and it exists, treat as having API key
+  // In debug mode, allow functionality even if env var not set for testing
+  const effectiveHasApiKey = hasApiKey || debugForceEnv;
 
-  const codeViewerWrapperBase = `flex flex-col overflow-hidden ${panelTransition}`;
+  const isChatEnabled = Boolean(repoUrl && (effectiveHasApiKey || debugForceEnv));
+  const chatInputPlaceholder = !repoUrl
+    ? "First enter a repo URL above"
+    : !(effectiveHasApiKey || debugForceEnv)
+    ? "Add your OpenAI API key to start chatting"
+    : "Ask a question about the repo or use @filename...";
 
   useEffect(() => {
     if (chatMessagesRef.current) {
@@ -173,6 +364,71 @@ const useChatPageState = (): UseChatPageStateResult => {
     const timeout = setTimeout(() => setIsCodeViewerMounted(false), 300);
     return () => clearTimeout(timeout);
   }, [hasOpenTabs]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    // Load debug toggles from localStorage
+    const storedDebugForceEnv = window.localStorage.getItem(DEBUG_FORCE_ENV_KEY) === "true";
+    const storedDebugForceUser = window.localStorage.getItem(DEBUG_FORCE_USER_KEY) === "true";
+
+    setDebugForceEnv(storedDebugForceEnv);
+    setDebugForceUser(storedDebugForceUser);
+
+    // Check for API key in environment variables first
+    const envApiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
+
+    // Determine which source to use based on debug toggles
+    if (storedDebugForceEnv && envApiKey) {
+      // Force using environment variable
+      setApiKey(envApiKey);
+      setApiKeyUpdatedAt(new Date().toISOString());
+      setMessages((prev) => [
+        ...prev,
+        {
+          sender: "bot",
+          text: "🔧 Debug mode: Using OpenAI API key from environment variables.",
+          sourceFiles: [],
+        },
+      ]);
+    } else if (storedDebugForceUser) {
+      // Force asking user for API key (don't load from localStorage)
+      setMessages((prev) => [
+        ...prev,
+        {
+          sender: "bot",
+          text: "🔧 Debug mode: Will prompt for OpenAI API key from user.",
+          sourceFiles: [],
+        },
+      ]);
+    } else if (envApiKey && !storedDebugForceUser) {
+      // Use environment variable if available and not forcing user input
+      setApiKey(envApiKey);
+      setApiKeyUpdatedAt(new Date().toISOString());
+      setMessages((prev) => [
+        ...prev,
+        {
+          sender: "bot",
+          text: "🔑 OpenAI API key loaded from environment variables.",
+          sourceFiles: [],
+        },
+      ]);
+    } else {
+      // Fall back to localStorage or prompt user
+      const storedKey = window.localStorage.getItem(API_KEY_STORAGE_KEY);
+      const storedUpdatedAt = window.localStorage.getItem(
+        API_KEY_UPDATED_AT_STORAGE_KEY
+      );
+
+      if (storedKey) {
+        setApiKey(storedKey);
+      }
+
+      if (storedUpdatedAt) {
+        setApiKeyUpdatedAt(storedUpdatedAt);
+      }
+    }
+  }, []);
 
   const fetchDirectoryTree = async (targetRepoUrl: string) => {
     setIsLoadingTree(true);
@@ -206,8 +462,10 @@ const useChatPageState = (): UseChatPageStateResult => {
       } else {
         throw new Error(data.message || "An unknown error occurred.");
       }
-    } catch (error: any) {
-      setTreeError(`Failed to load directory tree: ${error.message}`);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : String(error ?? "Unknown error");
+      setTreeError(`Failed to load directory tree: ${message}`);
     } finally {
       setIsLoadingTree(false);
     }
@@ -216,6 +474,22 @@ const useChatPageState = (): UseChatPageStateResult => {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!url.trim()) return;
+
+    if (!effectiveHasApiKey) {
+      // Don't show modal if using environment variable in force mode
+      if (!debugForceEnv) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            sender: "bot",
+            text: "🔑 Add your OpenAI API key before ingesting a repository.",
+            sourceFiles: [],
+          },
+        ]);
+        setIsApiKeyModalOpen(true);
+      }
+      return;
+    }
 
     if (githubRegex.test(url)) {
       const trimmedUrl = url.trim();
@@ -226,7 +500,7 @@ const useChatPageState = (): UseChatPageStateResult => {
         ...prev,
         {
           sender: "bot",
-          text: "\u{1F680} Thanks! That looks like a valid GitHub repository. Starting ingestion...",
+          text: "🚀 Thanks! That looks like a valid GitHub repository. Starting ingestion...",
           sourceFiles: [],
         },
       ]);
@@ -234,9 +508,19 @@ const useChatPageState = (): UseChatPageStateResult => {
       try {
         const backendUrl =
           process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
+        // Use API key from environment if forcing env mode, otherwise use stored key
+        const keyToSend = debugForceEnv && process.env.NEXT_PUBLIC_OPENAI_API_KEY
+          ? process.env.NEXT_PUBLIC_OPENAI_API_KEY
+          : apiKey.trim();
+        if (keyToSend) {
+          headers["x-openai-api-key"] = keyToSend;
+        }
         const response = await fetch(`${backendUrl}/api/ingest`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify({ github_url: trimmedUrl }),
         });
         const data = await response.json();
@@ -246,7 +530,7 @@ const useChatPageState = (): UseChatPageStateResult => {
             ...prev,
             {
               sender: "bot",
-              text: "\u2705 Repository ingestion complete. You can now ask questions about the repo.",
+              text: "✅ Repository ingestion complete. You can now ask questions about the repo.",
               sourceFiles: [],
             },
           ]);
@@ -255,7 +539,7 @@ const useChatPageState = (): UseChatPageStateResult => {
             ...prev,
             {
               sender: "bot",
-              text: `ΓÜá∩╕Å ${data.message || "Error starting ingestion"}`,
+              text: `❌ ${data.message || "Error starting ingestion"}`,
               sourceFiles: [],
             },
           ]);
@@ -265,7 +549,7 @@ const useChatPageState = (): UseChatPageStateResult => {
           ...prev,
           {
             sender: "bot",
-            text: "ΓÜá∩╕Å Error connecting to backend. Please try again later.",
+            text: "❌ Error connecting to backend. Please try again later.",
             sourceFiles: [],
           },
         ]);
@@ -356,6 +640,21 @@ const useChatPageState = (): UseChatPageStateResult => {
     event.preventDefault();
 
     if (!inputMessage.trim() || !treeStructure || !repoUrl) return;
+    if (!effectiveHasApiKey) {
+      // Don't show modal if using environment variable in force mode
+      if (!debugForceEnv) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            sender: "bot",
+            text: "🔑 Please add your OpenAI API key before starting the chat.",
+            sourceFiles: [],
+          },
+        ]);
+        setIsApiKeyModalOpen(true);
+      }
+      return;
+    }
 
     const { cleanText, taggedFiles } = parseFileTags(inputMessage);
 
@@ -382,9 +681,20 @@ const useChatPageState = (): UseChatPageStateResult => {
         payload.tagged_files = taggedFiles;
       }
 
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      // Use API key from environment if forcing env mode, otherwise use stored key
+      const keyToSend = debugForceEnv && process.env.NEXT_PUBLIC_OPENAI_API_KEY
+        ? process.env.NEXT_PUBLIC_OPENAI_API_KEY
+        : apiKey.trim();
+      if (keyToSend) {
+        headers["x-openai-api-key"] = keyToSend;
+      }
+
       const response = await fetch(`${backendUrl}/api/query`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(payload),
       });
       const data = await response.json();
@@ -393,7 +703,7 @@ const useChatPageState = (): UseChatPageStateResult => {
         ...prev,
         {
           sender: "bot",
-          text: data.response || `ΓÜá∩╕Å Error: ${data.message || "Failed to query."}`,
+          text: data.response || `❌ Error: ${data.message || "Failed to query."}`,
           sourceFiles: data.source_files || [],
         },
       ]);
@@ -402,7 +712,7 @@ const useChatPageState = (): UseChatPageStateResult => {
         ...prev,
         {
           sender: "bot",
-          text: "ΓÜá∩╕Å Error connecting to backend. Please try again later.",
+          text: "❌ Error connecting to backend. Please try again later.",
           sourceFiles: [],
         },
       ]);
@@ -416,7 +726,7 @@ const useChatPageState = (): UseChatPageStateResult => {
     setShowClearChatConfirm(false);
   };
 
-  const getCurrentStructure = (): TreeStructure => {
+  const getCurrentStructure = useCallback((): TreeStructure => {
     if (!treeStructure) return {};
 
     let current = treeStructure;
@@ -424,11 +734,11 @@ const useChatPageState = (): UseChatPageStateResult => {
       current = (current?.[part] as TreeStructure) || {};
     }
     return current || {};
-  };
+  }, [treeStructure, treeCurrentPath]);
 
   const currentStructure = useMemo(
     () => getCurrentStructure(),
-    [treeStructure, treeCurrentPath]
+    [getCurrentStructure]
   );
 
   const handleFolderClick = (
@@ -486,7 +796,7 @@ const useChatPageState = (): UseChatPageStateResult => {
             ...prev,
             {
               sender: "bot",
-              text: `ΓÜá∩╕Å File "${expectedPath}" not found in current repository. It may be from a different repository or the path may have changed.`,
+              text: `❌ File "${expectedPath}" not found in current repository. It may be from a different repository or the path may have changed.`,
               sourceFiles: [],
             },
           ]);
@@ -503,12 +813,14 @@ const useChatPageState = (): UseChatPageStateResult => {
             : tab
         )
       );
-    } catch (error: any) {
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : String(error ?? "Unknown error");
       setMessages((prev) => [
         ...prev,
         {
           sender: "bot",
-          text: `ΓÜá∩╕Å Failed to fetch file content for "${expectedPath}": ${error.message}. This file may not exist in the current repository.`,
+          text: `❌ Failed to fetch file content for "${expectedPath}": ${message}. This file may not exist in the current repository.`,
           sourceFiles: [],
         },
       ]);
@@ -755,7 +1067,7 @@ const useChatPageState = (): UseChatPageStateResult => {
           ...prev,
           {
             sender: "bot",
-            text: `≡ƒ¢░∩╕Å ${data.message}`,
+            text: `✅ ${data.message}`,
             sourceFiles: [],
           },
         ]);
@@ -775,7 +1087,7 @@ const useChatPageState = (): UseChatPageStateResult => {
           ...prev,
           {
             sender: "bot",
-            text: `ΓÜá∩╕Å ${data.message}`,
+            text: `❌ ${data.message}`,
             sourceFiles: [],
           },
         ]);
@@ -785,7 +1097,7 @@ const useChatPageState = (): UseChatPageStateResult => {
         ...prev,
         {
           sender: "bot",
-          text: "ΓÜá∩╕Å Error connecting to backend. Please try again later.",
+          text: "❌ Error connecting to backend. Please try again later.",
           sourceFiles: [],
         },
       ]);
@@ -797,19 +1109,16 @@ const useChatPageState = (): UseChatPageStateResult => {
 
   const layout: LayoutConfig = {
     treePanelClassName,
-    chatPanelClassName,
-    codeViewerWrapperClassName: `${codeViewerWrapperBase} ${
-      hasOpenTabs
-        ? "basis-[45%] max-w-[55%] min-w-0 opacity-100 translate-x-0 pt-2 pr-2 pb-2 pl-0 grow"
-        : "basis-0 max-w-0 min-w-0 opacity-0 -translate-x-4 p-0 pointer-events-none grow-0"
-    }`,
-    codeViewerVisible: isCodeViewerMounted || hasOpenTabs,
-    codeViewerAriaHidden: !hasOpenTabs,
+    hasDirectories: allDirectoryPaths.length > 0,
+    isFullyExpanded,
+    treeContainerRef,
+    isApiKeySet: hasApiKey,
+    onManageApiKeyClick: () => setIsApiKeyModalOpen(true),
   };
 
-  const treePanel: TreePanelBinding = {
+  const treePanel: TreePanelBinding = useMemo(() => ({
     url,
-    onUrlChange: (value) => setUrl(value),
+    onUrlChange: (value: string) => setUrl(value),
     onSubmit: handleSubmit,
     onClearRepositoriesClick: () => setShowClearConfirm(true),
     treeStructure,
@@ -828,10 +1137,36 @@ const useChatPageState = (): UseChatPageStateResult => {
     hasDirectories: allDirectoryPaths.length > 0,
     isFullyExpanded,
     treeContainerRef,
-  };
+    isApiKeySet: hasApiKey,
+    effectiveHasApiKey,
+    onManageApiKeyClick: () => setIsApiKeyModalOpen(true),
+    debugForceEnv,
+  }), [
+    url,
+    handleSubmit,
+    treeStructure,
+    treeError,
+    isLoadingTree,
+    treeCurrentPath,
+    handleTreeBackClick,
+    currentStructure,
+    repoDetails,
+    expandedNodes,
+    treeSelectedItems,
+    fileColors,
+    handleFolderClick,
+    handleFileClick,
+    handleToggleExpandAll,
+    allDirectoryPaths.length,
+    isFullyExpanded,
+    treeContainerRef,
+    hasApiKey,
+    effectiveHasApiKey,
+    setIsApiKeyModalOpen,
+    debugForceEnv,
+  ]);
 
   const codeViewer: CodeViewerBinding = {
-    className: "flex-1 flex flex-col pt-2 pr-2 pb-2 pl-0 max-w-full min-w-0",
     tabs,
     activeTabId,
     activeTab,
@@ -859,6 +1194,9 @@ const useChatPageState = (): UseChatPageStateResult => {
     autocompleteOptions,
     autocompleteIndex,
     onAutocompleteSelect: handleAutocompleteSelect,
+    isChatEnabled,
+    inputPlaceholder: chatInputPlaceholder,
+    onManageApiKeyClick: () => setIsApiKeyModalOpen(true),
   };
 
   const clearChatModal: ClearChatModalBinding = {
@@ -874,6 +1212,22 @@ const useChatPageState = (): UseChatPageStateResult => {
     onConfirm: handleClearRepositories,
   };
 
+  const apiKeyManager: ApiKeyManagerBinding = {
+    hasApiKey,
+    maskedKey: maskedApiKey,
+    isModalOpen: isApiKeyModalOpen,
+    currentValue: apiKey,
+    updatedAtLabel: apiKeyUpdatedAtLabel,
+    onOpen: () => setIsApiKeyModalOpen(true),
+    onClose: () => setIsApiKeyModalOpen(false),
+    onSave: handleSaveApiKey,
+    onClear: handleClearApiKey,
+    debugForceEnv,
+    debugForceUser,
+    onToggleDebugForceEnv: toggleDebugForceEnv,
+    onToggleDebugForceUser: toggleDebugForceUser,
+  };
+
   return {
     layout,
     treePanel,
@@ -881,29 +1235,8 @@ const useChatPageState = (): UseChatPageStateResult => {
     chatPanel,
     clearChatModal,
     clearRepositoriesModal,
+    apiKeyManager,
   };
 };
 
 export default useChatPageState;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

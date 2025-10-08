@@ -25,6 +25,10 @@ interface TreePanelProps {
   hasDirectories: boolean;
   isFullyExpanded: boolean;
   treeContainerRef: RefObject<HTMLDivElement | null>;
+  isApiKeySet: boolean;
+  effectiveHasApiKey: boolean;
+  onManageApiKeyClick: () => void;
+  debugForceEnv: boolean;
 }
 
 interface TreeNodeProps {
@@ -149,12 +153,37 @@ const TreePanel = ({
   isFullyExpanded,
   treeContainerRef,
   className,
+  isApiKeySet,
+  effectiveHasApiKey,
+  onManageApiKeyClick,
+  debugForceEnv,
 }: TreePanelProps) => {
   const rootName =
     treeCurrentPath.length === 0 ? repoDetails.repo : treeCurrentPath[treeCurrentPath.length - 1];
 
   return (
     <div className={className}>
+      {!effectiveHasApiKey && !debugForceEnv && (
+        <div className="mb-4 flex items-start gap-3 rounded-xl border border-blue-500/40 bg-blue-900/20 px-4 py-3">
+          <span className="text-2xl leading-none">🔑</span>
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-blue-100">
+              Add your OpenAI API key to get started
+            </p>
+            <p className="mt-1 text-xs text-blue-100/80">
+              Your key is saved locally in this browser and used only for repository ingestion and chat responses.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onManageApiKeyClick}
+            className="rounded-lg border border-blue-400/40 px-3 py-1.5 text-sm font-semibold text-blue-100 transition-colors hover:border-blue-300 hover:bg-blue-500/20"
+          >
+            Add Key
+          </button>
+        </div>
+      )}
+
       <form onSubmit={onSubmit} className="flex gap-2 mb-4">
         <input
           type="text"
@@ -165,11 +194,29 @@ const TreePanel = ({
         />
         <button
           type="submit"
-          className="px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-all"
+          className={`px-5 py-3 rounded-lg font-semibold transition-all ${
+            effectiveHasApiKey || debugForceEnv
+              ? "bg-blue-600 text-white hover:bg-blue-700"
+              : "cursor-not-allowed bg-blue-600/40 text-blue-100/70"
+          }`}
+          disabled={!effectiveHasApiKey && !debugForceEnv}
         >
-          Send
+          Ingest Repo
         </button>
       </form>
+      {!isApiKeySet && !debugForceEnv && (
+        <p className="mb-4 text-xs text-blue-100/80">
+          Need a key?{" "}
+          <button
+            type="button"
+            onClick={onManageApiKeyClick}
+            className="underline decoration-dotted underline-offset-2 hover:text-blue-200"
+          >
+            Paste your OpenAI API key
+          </button>{" "}
+          to unlock ingest and chat.
+        </p>
+      )}
 
       <div className="mb-4">
         <button
@@ -237,5 +284,3 @@ const TreePanel = ({
 };
 
 export default TreePanel;
-
-
