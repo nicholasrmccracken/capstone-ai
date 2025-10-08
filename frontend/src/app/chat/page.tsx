@@ -4,6 +4,9 @@ import CodeViewer from "./components/CodeViewer";
 import ChatPanel from "./components/ChatPanel";
 import ClearChatModal from "./components/ClearChatModal";
 import ClearRepositoriesModal from "./components/ClearRepositoriesModal";
+import ApiKeyBanner from "./components/ApiKeyBanner";
+import ApiKeyModal from "./components/ApiKeyModal";
+import DebugPanel from "./components/DebugPanel";
 import useChatPageState from "./hooks/useChatPageState";
 
 export default function Chat() {
@@ -14,6 +17,7 @@ export default function Chat() {
     chatPanel,
     clearChatModal,
     clearRepositoriesModal,
+    apiKeyManager,
   } = useChatPageState();
 
   return (
@@ -25,16 +29,23 @@ export default function Chat() {
         RepoRover Chat
       </h2>
 
+      {/* Hide API key banner when using environment variable in force mode */}
+      {!apiKeyManager.debugForceEnv && (
+        <ApiKeyBanner
+          hasApiKey={apiKeyManager.hasApiKey}
+          maskedKey={apiKeyManager.maskedKey}
+          updatedAtLabel={apiKeyManager.updatedAtLabel}
+          onManageClick={apiKeyManager.onOpen}
+        />
+      )}
+
       <div className="flex w-full max-w-[120rem] flex-1 gap-4 overflow-hidden">
-        <div className="flex flex-1 bg-gray-900/70 border border-gray-700 rounded-xl shadow-lg overflow-hidden">
+        <div className={layout.leftContainerClassName}>
           <TreePanel className={layout.treePanelClassName} {...treePanel} />
 
-          {layout.codeViewerVisible && (
-            <div
-              className={layout.codeViewerWrapperClassName}
-              aria-hidden={layout.codeViewerAriaHidden}
-            >
-              <CodeViewer {...codeViewer} />
+          {codeViewer.tabs.length > 0 && (
+            <div className="flex flex-col overflow-hidden transition-[flex-basis,max-width,min-width,opacity,transform,padding] duration-500 ease-in-out basis-[57%] max-w-[75%] min-w-0 opacity-100 translate-x-0 pt-2 pr-2 pb-2 pl-0 grow">
+              <CodeViewer className="flex-1 flex flex-col pt-2 pr-2 pb-2 pl-0 max-w-full min-w-0" {...codeViewer} />
             </div>
           )}
         </div>
@@ -44,6 +55,19 @@ export default function Chat() {
 
       <ClearChatModal {...clearChatModal} />
       <ClearRepositoriesModal {...clearRepositoriesModal} />
+      <ApiKeyModal
+        isOpen={apiKeyManager.isModalOpen}
+        initialValue={apiKeyManager.currentValue}
+        onClose={apiKeyManager.onClose}
+        onSave={apiKeyManager.onSave}
+        onClear={apiKeyManager.onClear}
+      />
+      <DebugPanel
+        debugForceEnv={apiKeyManager.debugForceEnv}
+        debugForceUser={apiKeyManager.debugForceUser}
+        onToggleDebugForceEnv={apiKeyManager.onToggleDebugForceEnv}
+        onToggleDebugForceUser={apiKeyManager.onToggleDebugForceUser}
+      />
     </main>
   );
 }

@@ -18,7 +18,7 @@ try:
 except ImportError:
     RecursiveJsonSplitter = None
 from elasticsearch import Elasticsearch
-from config import ES_HOST, ES_USER, ES_PASSWORD, OPENAI_API_KEY
+from config import ES_HOST, ES_USER, ES_PASSWORD, OPENAI_API_KEY as DEFAULT_OPENAI_API_KEY
 import json
 import hashlib
 import time
@@ -26,7 +26,7 @@ import random
 import tempfile
 import os
 from io import StringIO
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Import tiktoken for accurate token counting
@@ -237,7 +237,12 @@ def process_file_chunks(owner: str, repo: str, file_path: str) -> Tuple[str, Lis
         return file_path, [], []
 
 
-def search_similar_chunks(query: str, repo_filter: str = None, top_k: int = 5) -> List[Dict[str, Any]]:
+def search_similar_chunks(
+    query: str,
+    repo_filter: str = None,
+    top_k: int = 5,
+    openai_api_key: Optional[str] = None,
+) -> List[Dict[str, Any]]:
     """
     Search for similar code chunks using hybrid search (semantic + keyword).
 
@@ -259,11 +264,13 @@ def search_similar_chunks(query: str, repo_filter: str = None, top_k: int = 5) -
         should_clauses: List[Dict[str, Any]] = []
         query_embedding = None
 
-        if OPENAI_API_KEY and OPENAI_AVAILABLE:
+        api_key = (openai_api_key or DEFAULT_OPENAI_API_KEY)
+
+        if api_key and OPENAI_AVAILABLE:
             if ensure_index(es, recreate_if_invalid=False):
                 embeddings_model = OpenAIEmbeddings(
                     model="text-embedding-ada-002",
-                    api_key=OPENAI_API_KEY
+                    api_key=api_key
                 )
                 query_embedding = embeddings_model.embed_query(query)
                 should_clauses.append({
@@ -284,7 +291,7 @@ def search_similar_chunks(query: str, repo_filter: str = None, top_k: int = 5) -
             else:
                 print("Warning: Dense vector mapping unavailable; using keyword search only.")
         else:
-            print("Warning: OPENAI_API_KEY not found. Using keyword search only.")
+            print("Warning: OpenAI API key not found. Using keyword search only.")
 
         should_clauses.append({
             "multi_match": {
@@ -342,7 +349,7 @@ and indexes everything into Elasticsearch using bulk API for better performance.
 
 See: https://python.langchain.com/docs/concepts/text_splitters/
 """
-def ingest_github_repo(github_url: str):
+def ingest_github_repo(github_url: str, openai_api_key: Optional[str] = None):
     # Extract repository owner and name from GitHub URL
     owner, repo = github_url.rstrip("/").split("/")[-2:]
 
@@ -371,9 +378,11 @@ def ingest_github_repo(github_url: str):
     except Exception as e:
         print(f"Warning: Failed to clear existing chunks: {e}")
 
-    if not OPENAI_API_KEY or not OPENAI_AVAILABLE:
-        if not OPENAI_API_KEY:
-            print("Warning: OPENAI_API_KEY not found. Skipping embeddings.")
+    api_key = openai_api_key or DEFAULT_OPENAI_API_KEY
+
+    if not api_key or not OPENAI_AVAILABLE:
+        if not api_key:
+            print("Warning: OpenAI API key not found. Skipping embeddings.")
         else:
             print("Warning: OpenAI embeddings library not available. Skipping embeddings.")
         return
@@ -381,7 +390,7 @@ def ingest_github_repo(github_url: str):
     # Initialize the OpenAI embeddings model for generating vector representations
     embeddings_model = OpenAIEmbeddings(
         model="text-embedding-ada-002",
-        api_key=OPENAI_API_KEY
+        api_key=api_key
     )
 
     # Fetch all file paths from the GitHub repository

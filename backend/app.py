@@ -2,10 +2,10 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from ingest_pipeline import ingest_github_repo, search_similar_chunks
 from config import OPENAI_API_KEY
-import json
 from langchain_openai import ChatOpenAI
 
 import os
+from typing import Any, Dict, Optional
 from github import Github, UnknownObjectException, Auth
 from dotenv import load_dotenv
 from elasticsearch import Elasticsearch
@@ -16,24 +16,57 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
-# Initialize ChatOpenAI model
-if OPENAI_API_KEY:
-    llm = ChatOpenAI(
+API_KEY_HEADER = "X-OPENAI-API-KEY"
+
+
+def resolve_openai_api_key(payload: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    """
+    Determine the OpenAI API key for the current request.
+
+    Priority:
+    1. Custom header (X-OPENAI-API-KEY)
+    2. Explicit payload field openai_api_key
+    3. Server-side environment fallback
+    """
+    header_key = request.headers.get(API_KEY_HEADER)
+    if isinstance(header_key, str) and header_key.strip():
+        return header_key.strip()
+
+    if payload:
+        body_key = payload.get("openai_api_key")
+        if isinstance(body_key, str) and body_key.strip():
+            return body_key.strip()
+
+    if OPENAI_API_KEY and OPENAI_API_KEY.strip():
+        return OPENAI_API_KEY.strip()
+
+    return None
+
+
+def build_chat_model(api_key: str) -> ChatOpenAI:
+    """
+    Create a ChatOpenAI client with common configuration.
+    """
+    return ChatOpenAI(
         model="gpt-3.5-turbo",
         temperature=0.1,
-        api_key=OPENAI_API_KEY
+        api_key=api_key
     )
-else:
-    llm = None
 
 
 @app.route("/api/ingest", methods=["POST"])
 def ingest():
-    github_url = request.json.get("github_url")
+    payload = request.get_json(silent=True) or {}
+    github_url = payload.get("github_url")
     if not github_url:
         return jsonify({"status": "error", "message": "No URL provided"}), 400
+
+    api_key = resolve_openai_api_key(payload)
+    if not api_key:
+        return jsonify({"status": "error", "message": "OpenAI API key not provided."}), 400
+
     try:
-        ingest_github_repo(github_url)
+        ingest_github_repo(github_url, openai_api_key=api_key)
         return jsonify({"status": "started"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -127,14 +160,19 @@ def get_file_content():
 
 @app.route("/api/query", methods=["POST"])
 def query():
-    data = request.json
-    query_text = data.get("query")
-    github_url = data.get("github_url")
-    tagged_files = data.get("tagged_files", [])
+    payload = request.get_json(silent=True) or {}
+    query_text = payload.get("query")
+    github_url = payload.get("github_url")
+    tagged_files = payload.get("tagged_files", [])
     if not query_text or not github_url:
         return jsonify({"status": "error", "message": "Query or URL not provided"}), 400
 
+    api_key = resolve_openai_api_key(payload)
+    if not api_key:
+        return jsonify({"status": "error", "message": "OpenAI API key not provided."}), 400
+
     try:
+        llm = build_chat_model(api_key)
         # Extract repo info for tagged file retrieval
         owner, repo = github_url.strip("/").split("/")[-2:]
         github_token = os.getenv("GITHUB_TOKEN")
@@ -330,18 +368,23 @@ def clear_repositories():
 
 @app.route("/api/chat", methods=["POST"])
 def chat():
-    question = request.json.get("question")
-    repo_filter = request.json.get("repo_filter")  # Optional: "owner/repo"
+    payload = request.get_json(silent=True) or {}
+    question = payload.get("question")
+    repo_filter = payload.get("repo_filter")  # Optional: "owner/repo"
 
     if not question:
         return jsonify({"status": "error", "message": "No question provided"}), 400
 
-    if not OPENAI_API_KEY:
-        return jsonify({"status": "error", "message": "OpenAI API key not configured"}), 500
+    api_key = resolve_openai_api_key(payload)
+    if not api_key:
+        return jsonify({"status": "error", "message": "OpenAI API key not provided."}), 400
 
     try:
+        llm = build_chat_model(api_key)
         # Search for relevant code chunks
-        chunks = search_similar_chunks(question, repo_filter, top_k=5)
+        chunks = search_similar_chunks(
+            question, repo_filter, top_k=5, openai_api_key=api_key
+        )
 
         if not chunks:
             return jsonify({
