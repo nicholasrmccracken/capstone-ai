@@ -96,6 +96,7 @@ export interface ChatPanelBinding {
   isChatEnabled: boolean;
   inputPlaceholder: string;
   onManageApiKeyClick: () => void;
+  onAtButtonClick: () => void;
 }
 
 export interface ClearChatModalBinding {
@@ -571,14 +572,9 @@ const useChatPageState = (): UseChatPageStateResult => {
     cleanText: string;
     taggedFiles: string[];
   } => {
-    const fileTagRegex = /@([^\s]+)/g;
-    const taggedFiles: string[] = [];
-    let match;
-    while ((match = fileTagRegex.exec(text)) !== null) {
-      taggedFiles.push(match[1]);
-    }
-    const cleanText = text.replace(fileTagRegex, "").trim();
-    return { cleanText, taggedFiles };
+    const parts = text.split('@').filter(part => part.trim() !== '');
+    const cleanText = text.replace('@', '').trim();
+    return { cleanText, taggedFiles: parts };
   };
 
   const handleInputChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -622,6 +618,22 @@ const useChatPageState = (): UseChatPageStateResult => {
       if (inputRef.current) {
         const newPos = beforeAt.length + option.length + 1;
         inputRef.current.setSelectionRange(newPos, newPos);
+      }
+    }, 0);
+  };
+
+  const handleAtButtonClick = () => {
+    if (allFilePaths.length === 0) return;
+    setAutocompleteOptions(allFilePaths);
+    setAtPosition(inputMessage.length); // Insert at end
+    setAutocompleteIndex(0);
+    setShowAutocomplete(true);
+    setInputMessage(`${inputMessage}@`);
+    setTimeout(() => {
+      if (inputRef.current) {
+        inputRef.current.focus();
+        const pos = inputMessage.length + 1;
+        inputRef.current.setSelectionRange(pos, pos);
       }
     }, 0);
   };
@@ -1209,6 +1221,7 @@ const useChatPageState = (): UseChatPageStateResult => {
     isChatEnabled,
     inputPlaceholder: chatInputPlaceholder,
     onManageApiKeyClick: () => setIsApiKeyModalOpen(true),
+    onAtButtonClick: handleAtButtonClick,
   };
 
   const clearChatModal: ClearChatModalBinding = {

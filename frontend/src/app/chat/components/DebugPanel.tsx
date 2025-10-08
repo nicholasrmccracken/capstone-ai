@@ -6,7 +6,6 @@ interface DebugPanelProps {
   debugForceUser: boolean;
   onToggleDebugForceEnv: () => void;
   onToggleDebugForceUser: () => void;
-  onClose: () => void;
 }
 
 const DebugPanel = ({
@@ -14,7 +13,6 @@ const DebugPanel = ({
   debugForceUser,
   onToggleDebugForceEnv,
   onToggleDebugForceUser,
-  onClose,
 }: DebugPanelProps) => {
   const [isVisible, setIsVisible] = useState(false);
 
@@ -34,7 +32,7 @@ const DebugPanel = ({
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-lg font-semibold text-white">Debug Controls</h3>
             <button
-              onClick={onClose}
+              onClick={() => setIsVisible(false)}
               className="rounded-lg border border-gray-700/60 px-2 py-1 text-sm text-gray-300 hover:bg-gray-800"
             >
               ✕

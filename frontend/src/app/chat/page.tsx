@@ -67,7 +67,6 @@ export default function Chat() {
         debugForceUser={apiKeyManager.debugForceUser}
         onToggleDebugForceEnv={apiKeyManager.onToggleDebugForceEnv}
         onToggleDebugForceUser={apiKeyManager.onToggleDebugForceUser}
-        onClose={() => {}}
       />
     </main>
   );
