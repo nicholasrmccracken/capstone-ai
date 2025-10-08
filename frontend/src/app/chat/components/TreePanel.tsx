@@ -42,8 +42,10 @@ interface TreeNodeProps {
   onFileClick: (name: string, parentPath: string[], e: MouseEvent) => void;
 }
 
-const INDENT_WITH_BRANCH = "|  ";
-const INDENT_WITHOUT_BRANCH = "   ";
+// Use non-breaking spaces for consistent monospace alignment
+const NBSP = "\u00A0";
+const INDENT_WITH_BRANCH = `│${NBSP}${NBSP}${NBSP}`;
+const INDENT_WITHOUT_BRANCH = `${NBSP}${NBSP}${NBSP}${NBSP}`;
 
 const TreeNode = memo(
   ({
@@ -73,7 +75,7 @@ const TreeNode = memo(
         {entries.map(([name, value], index) => {
           const isDirectory = typeof value === "object" && value !== null;
           const isLast = index === entries.length - 1;
-          const connector = `${prefix}${isLast ? "`--" : "|--"}`;
+          const connector = `${prefix}${isLast ? "└── " : "├── "}`;
 
           const itemPath = [...parentPath, name].join("/");
           const isExpanded = expandedNodes.has(itemPath);
@@ -81,9 +83,16 @@ const TreeNode = memo(
           const fileColor = fileColors.get(itemPath);
 
           return (
-            <div key={itemPath}>
+            <div key={itemPath} className="font-mono whitespace-pre leading-5">
               <div className="flex items-center space-x-2">
-                <span className="text-gray-500 select-none font-mono whitespace-pre">
+                <span
+                  className="text-gray-500 select-none inline-block"
+                  style={{
+                    whiteSpace: "pre",
+                    fontFamily: "monospace",
+                    display: "inline-block",
+                  }}
+                >
                   {connector}
                 </span>
                 {isDirectory ? (
@@ -91,7 +100,9 @@ const TreeNode = memo(
                     type="button"
                     onClick={(event) => onFolderClick(name, parentPath, event)}
                     className={`text-left font-mono hover:underline ${
-                      isSelected ? "bg-blue-600 text-blue-200 px-1 rounded" : "text-blue-400"
+                      isSelected
+                        ? "bg-blue-600 text-blue-200 px-1 rounded"
+                        : "text-blue-400"
                     }`}
                   >
                     {name}/ {isExpanded ? "[-]" : "[+]"}
@@ -113,7 +124,9 @@ const TreeNode = memo(
                 <TreeNode
                   structure={value as TreeStructure}
                   parentPath={[...parentPath, name]}
-                  prefix={prefix + (isLast ? INDENT_WITHOUT_BRANCH : INDENT_WITH_BRANCH)}
+                  prefix={
+                    prefix + (isLast ? INDENT_WITHOUT_BRANCH : INDENT_WITH_BRANCH)
+                  }
                   expandedNodes={expandedNodes}
                   selectedItems={selectedItems}
                   fileColors={fileColors}
@@ -159,7 +172,9 @@ const TreePanel = ({
   debugForceEnv,
 }: TreePanelProps) => {
   const rootName =
-    treeCurrentPath.length === 0 ? repoDetails.repo : treeCurrentPath[treeCurrentPath.length - 1];
+    treeCurrentPath.length === 0
+      ? repoDetails.repo
+      : treeCurrentPath[treeCurrentPath.length - 1];
 
   return (
     <div className={className}>
@@ -171,7 +186,8 @@ const TreePanel = ({
               Add your OpenAI API key to get started
             </p>
             <p className="mt-1 text-xs text-blue-100/80">
-              Your key is saved locally in this browser and used only for repository ingestion and chat responses.
+              Your key is saved locally in this browser and used only for
+              repository ingestion and chat responses.
             </p>
           </div>
           <button
@@ -230,7 +246,9 @@ const TreePanel = ({
       </div>
 
       <div className="flex justify-between items-center mb-2">
-        <h3 className="text-xl font-bold text-gray-300">Repository Structure</h3>
+        <h3 className="text-xl font-bold text-gray-300">
+          Repository Structure
+        </h3>
         {treeStructure && hasDirectories && (
           <button
             type="button"
@@ -243,7 +261,10 @@ const TreePanel = ({
         )}
       </div>
 
-      <div ref={treeContainerRef} className="flex-1 overflow-auto bg-gray-900 p-2 rounded-md">
+      <div
+        ref={treeContainerRef}
+        className="flex-1 overflow-auto bg-gray-900 p-2 rounded-md"
+      >
         {isLoadingTree && <p className="text-gray-400">Loading tree...</p>}
         {treeError && <p className="text-red-400">{treeError}</p>}
         {treeStructure && (
@@ -259,7 +280,7 @@ const TreePanel = ({
                 </button>
               </div>
             )}
-            <div className="text-sm text-gray-300 font-mono">
+            <div className="text-sm text-gray-300 font-mono whitespace-pre">
               <div className="mb-1">
                 <span>{rootName}</span>
               </div>
@@ -276,7 +297,9 @@ const TreePanel = ({
           </>
         )}
         {!isLoadingTree && !treeError && !treeStructure && (
-          <p className="text-gray-500">Enter a repository URL to see its structure here.</p>
+          <p className="text-gray-500">
+            Enter a repository URL to see its structure here.
+          </p>
         )}
       </div>
     </div>

@@ -40,17 +40,17 @@ export default function Chat() {
       )}
 
       <div className="flex w-full max-w-[120rem] flex-1 gap-4 overflow-hidden">
-        <div className="flex flex-1 bg-gray-900/70 border border-gray-700 rounded-xl shadow-lg overflow-hidden">
+        <div className={layout.leftContainerClassName}>
           <TreePanel className={layout.treePanelClassName} {...treePanel} />
 
           {codeViewer.tabs.length > 0 && (
-            <div className="flex flex-col overflow-hidden transition-[flex-basis,max-width,min-width,opacity,transform,padding] duration-500 ease-in-out basis-[45%] max-w-[55%] min-w-0 opacity-100 translate-x-0 pt-2 pr-2 pb-2 pl-0 grow">
+            <div className="flex flex-col overflow-hidden transition-[flex-basis,max-width,min-width,opacity,transform,padding] duration-500 ease-in-out basis-[57%] max-w-[75%] min-w-0 opacity-100 translate-x-0 pt-2 pr-2 pb-2 pl-0 grow">
               <CodeViewer className="flex-1 flex flex-col pt-2 pr-2 pb-2 pl-0 max-w-full min-w-0" {...codeViewer} />
             </div>
           )}
         </div>
 
-        <ChatPanel className="bg-gray-900/70 border border-gray-700 p-6 rounded-xl shadow-lg flex flex-col flex-shrink-0 basis-[60%] max-w-[75%] min-w-[320px] grow transition-[flex-basis,max-width,min-width,opacity,transform,padding] duration-500 ease-in-out" {...chatPanel} />
+        <ChatPanel className={layout.chatPanelClassName} {...chatPanel} />
       </div>
 
       <ClearChatModal {...clearChatModal} />

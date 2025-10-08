@@ -29,6 +29,8 @@ const DEBUG_FORCE_USER_KEY = "reporover:debug_force_user_key";
 
 interface LayoutConfig {
   treePanelClassName: string;
+  leftContainerClassName: string;
+  chatPanelClassName: string;
   hasDirectories: boolean;
   isFullyExpanded: boolean;
   treeContainerRef: RefObject<HTMLDivElement | null>;
@@ -336,8 +338,16 @@ const useChatPageState = (): UseChatPageStateResult => {
     "transition-[flex-basis,max-width,min-width,opacity,transform,padding] duration-500 ease-in-out";
 
   const treePanelClassName = hasOpenTabs
-    ? `flex flex-col p-1 flex-shrink-0 basis-[45%] max-w-[620px] min-w-[300px] ${panelTransition}`
+    ? `flex flex-col p-1 flex-shrink-0 basis-[43%] max-w-[620px] min-w-[300px] ${panelTransition}`
     : `flex flex-col p-1 flex-1 min-w-0 grow ${panelTransition}`;
+
+  const leftContainerClassName = hasOpenTabs
+    ? `flex bg-gray-900/70 border border-gray-700 rounded-xl shadow-lg overflow-hidden basis-[70%] flex-shrink-0 ${panelTransition}`
+    : `flex bg-gray-900/70 border border-gray-700 rounded-xl shadow-lg overflow-hidden flex-1 ${panelTransition}`;
+
+  const chatPanelClassName = hasOpenTabs
+    ? `bg-gray-900/70 border border-gray-700 p-6 rounded-xl shadow-lg flex flex-col flex-shrink-0 basis-[30%] max-w-[75%] min-w-[320px] ${panelTransition}`
+    : `bg-gray-900/70 border border-gray-700 p-6 rounded-xl shadow-lg flex flex-col flex-shrink-0 basis-[50%] max-w-[75%] min-w-[320px] ${panelTransition}`;
 
   // When forcing environment variable and it exists, treat as having API key
   // In debug mode, allow functionality even if env var not set for testing
@@ -1109,6 +1119,8 @@ const useChatPageState = (): UseChatPageStateResult => {
 
   const layout: LayoutConfig = {
     treePanelClassName,
+    leftContainerClassName,
+    chatPanelClassName,
     hasDirectories: allDirectoryPaths.length > 0,
     isFullyExpanded,
     treeContainerRef,
