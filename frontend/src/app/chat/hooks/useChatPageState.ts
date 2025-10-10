@@ -572,9 +572,20 @@ const useChatPageState = (): UseChatPageStateResult => {
     cleanText: string;
     taggedFiles: string[];
   } => {
-    const parts = text.split('@').filter(part => part.trim() !== '');
-    const cleanText = text.replace('@', '').trim();
-    return { cleanText, taggedFiles: parts };
+    const tagPattern = /@([^\s@]+)/g;
+    const seen = new Set<string>();
+    const cleanText = text
+      .replace(tagPattern, (_match, tag: string) => {
+        const normalizedTag = tag.trim();
+        if (normalizedTag && !seen.has(normalizedTag)) {
+          seen.add(normalizedTag);
+        }
+        return normalizedTag;
+      })
+      .replace(/\s+/g, " ")
+      .trim();
+
+    return { cleanText, taggedFiles: Array.from(seen) };
   };
 
   const handleInputChange = (event: ChangeEvent<HTMLInputElement>) => {
