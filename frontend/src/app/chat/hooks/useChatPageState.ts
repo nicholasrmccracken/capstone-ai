@@ -1007,7 +1007,7 @@ const useChatPageState = (): UseChatPageStateResult => {
     event.dataTransfer.dropEffect = "move";
   };
 
-  const reorderTabs = (targetId: number | null) => {
+  const reorderTabs = (targetId: number | null, insertAfter = false) => {
     setTabs((prevTabs) => {
       if (draggedTabId === null || draggedTabId === targetId) return prevTabs;
       const newTabs = [...prevTabs];
@@ -1017,25 +1017,42 @@ const useChatPageState = (): UseChatPageStateResult => {
       const [draggedTab] = newTabs.splice(draggedIndex, 1);
 
       if (targetId === null) {
+        if (insertAfter) {
+          newTabs.push(draggedTab);
+        } else {
+          newTabs.unshift(draggedTab);
+        }
+        return newTabs;
+      }
+
+      const targetIndex = newTabs.findIndex((t) => t.id === targetId);
+      if (targetIndex === -1) {
         newTabs.push(draggedTab);
         return newTabs;
       }
 
-      let targetIndex = newTabs.findIndex((t) => t.id === targetId);
-      if (targetIndex === -1) return prevTabs;
-
-      if (draggedIndex < targetIndex) {
-        targetIndex -= 1;
-      }
-
-      newTabs.splice(targetIndex, 0, draggedTab);
+      const insertAt = insertAfter ? targetIndex + 1 : targetIndex;
+      newTabs.splice(insertAt, 0, draggedTab);
       return newTabs;
     });
   };
 
   const handleDrop = (event: DragEvent, targetId: number | null) => {
     event.preventDefault();
-    reorderTabs(targetId);
+
+    let insertAfter = false;
+    try {
+      const el = event.currentTarget as HTMLElement | null;
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        const dropX = (event as DragEvent & { clientX: number }).clientX;
+        insertAfter = dropX > rect.left + rect.width / 2;
+      }
+    } catch {
+      insertAfter = false;
+    }
+
+    reorderTabs(targetId, insertAfter);
     setDraggedTabId(null);
   };
 
