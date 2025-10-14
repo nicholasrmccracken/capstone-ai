@@ -441,7 +441,9 @@ const useChatPageState = (): UseChatPageStateResult => {
     }
   }, []);
 
-  const fetchDirectoryTree = async (targetRepoUrl: string) => {
+  const fetchDirectoryTree = async (
+    targetRepoUrl: string
+  ): Promise<{ success: boolean; message?: string }> => {
     setIsLoadingTree(true);
     setTreeError(null);
     setTreeStructure(null);
@@ -455,7 +457,7 @@ const useChatPageState = (): UseChatPageStateResult => {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.message || "Failed to fetch directory tree.");
       }
 
@@ -470,13 +472,16 @@ const useChatPageState = (): UseChatPageStateResult => {
 
         const filePaths = getAllFilePaths(data.tree_structure);
         setAllFilePaths(filePaths);
+        return { success: true };
       } else {
         throw new Error(data.message || "An unknown error occurred.");
       }
     } catch (error) {
       const message =
         error instanceof Error ? error.message : String(error ?? "Unknown error");
-      setTreeError(`Failed to load directory tree: ${message}`);
+      const full = `Failed to load directory tree: ${message}`;
+      setTreeError(full);
+      return { success: false, message: full };
     } finally {
       setIsLoadingTree(false);
     }
@@ -505,8 +510,6 @@ const useChatPageState = (): UseChatPageStateResult => {
     if (githubRegex.test(url)) {
       const trimmedUrl = url.trim();
       setRepoUrl(trimmedUrl);
-      fetchDirectoryTree(trimmedUrl);
-
       setMessages((prev) => [
         ...prev,
         {
@@ -515,6 +518,21 @@ const useChatPageState = (): UseChatPageStateResult => {
           sourceFiles: [],
         },
       ]);
+
+      // Load the directory tree first. If loading fails, abort ingestion and show
+      // an explicit error in the chat so the user isn't misled.
+      const treeResult = await fetchDirectoryTree(trimmedUrl);
+      if (!treeResult.success) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            sender: "bot",
+            text: `❌ Repository ingestion aborted: ${treeResult.message || "Failed to load repository tree."}`,
+            sourceFiles: [],
+          },
+        ]);
+        return;
+      }
 
       try {
         const backendUrl =
@@ -541,7 +559,7 @@ const useChatPageState = (): UseChatPageStateResult => {
             ...prev,
             {
               sender: "bot",
-              text: "✅ Repository ingestion complete. You can now ask questions about the repo.",
+              text: "✅ Repository ingestion started. Processing may take a few minutes. You will be able to chat once ingestion finishes.",
               sourceFiles: [],
             },
           ]);
