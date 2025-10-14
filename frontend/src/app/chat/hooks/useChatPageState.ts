@@ -492,7 +492,6 @@ const useChatPageState = (): UseChatPageStateResult => {
     if (!url.trim()) return;
 
     if (!effectiveHasApiKey) {
-      // Don't show modal if using environment variable in force mode
       if (!debugForceEnv) {
         setMessages((prev) => [
           ...prev,
@@ -519,8 +518,6 @@ const useChatPageState = (): UseChatPageStateResult => {
         },
       ]);
 
-      // Load the directory tree first. If loading fails, abort ingestion and show
-      // an explicit error in the chat so the user isn't misled.
       const treeResult = await fetchDirectoryTree(trimmedUrl);
       if (!treeResult.success) {
         setMessages((prev) => [
@@ -540,7 +537,6 @@ const useChatPageState = (): UseChatPageStateResult => {
         const headers: Record<string, string> = {
           "Content-Type": "application/json",
         };
-        // Use API key from environment if forcing env mode, otherwise use stored key
         const keyToSend = debugForceEnv && process.env.NEXT_PUBLIC_OPENAI_API_KEY
           ? process.env.NEXT_PUBLIC_OPENAI_API_KEY
           : apiKey.trim();
@@ -583,6 +579,16 @@ const useChatPageState = (): UseChatPageStateResult => {
           },
         ]);
       }
+    } else {
+      // Immediate feedback for invalid/non-repo links
+      setMessages((prev) => [
+        ...prev,
+        {
+          sender: "bot",
+          text: "❌ Invalid GitHub repository URL. Please enter a URL like https://github.com/owner/repo",
+          sourceFiles: [],
+        },
+      ]);
     }
   };
 
