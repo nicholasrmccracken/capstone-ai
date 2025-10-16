@@ -91,6 +91,7 @@ const TreeNode = memo(
                     whiteSpace: "pre",
                     fontFamily: "monospace",
                     display: "inline-block",
+                    textShadow: "0.5px 0 0 currentColor, -0.5px 0 0 currentColor, 0 0.5px 0 currentColor",
                   }}
                 >
                   {connector}
