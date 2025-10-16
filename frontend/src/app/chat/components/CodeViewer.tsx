@@ -46,8 +46,8 @@ const CodeViewer = ({
   onDrop,
   onDragEnd,
 }: CodeViewerProps) => (
-  <div className={className}>
-    <div className="flex overflow-x-auto border-b border-gray-700 mb-2 bg-gray-900/40 px-2">
+  <div className={`${className} overflow-hidden`}>
+    <div className="flex overflow-x-auto border-b border-gray-700 mb-2 bg-gray-900/40 px-2 flex-shrink-0">
       {tabs.map((tab) => (
         <div
           key={tab.id}
@@ -86,7 +86,7 @@ const CodeViewer = ({
         +
       </button>
     </div>
-    <div className="flex-1 overflow-x-visible overflow-y-auto bg-gray-900 p-0 rounded-md max-w-none">
+    <div className="flex-1 overflow-y-auto overflow-x-auto bg-gray-900 p-0 rounded-md max-w-none min-h-0">
       {activeTab ? (
         activeTab.filePath ? (
           renderFileContentWithLines(activeTab.fileContent)

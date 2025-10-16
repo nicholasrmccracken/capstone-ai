@@ -43,11 +43,11 @@ export default function Chat() {
         <div className={layout.leftContainerClassName}>
           <TreePanel className={layout.treePanelClassName} {...treePanel} />
 
-          {codeViewer.tabs.length > 0 && (
-            <div className="flex flex-col overflow-hidden transition-[flex-basis,max-width,min-width,opacity,transform,padding] duration-500 ease-in-out basis-[57%] max-w-[75%] min-w-0 opacity-100 translate-x-0 pt-2 pr-2 pb-2 pl-0 grow">
+          <div className={layout.codeViewerClassName}>
+            {codeViewer.tabs.length > 0 && (
               <CodeViewer className="flex-1 flex flex-col pt-2 pr-2 pb-2 pl-0 max-w-full min-w-0" {...codeViewer} />
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         <ChatPanel className={layout.chatPanelClassName} {...chatPanel} />

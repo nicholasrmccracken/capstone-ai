@@ -31,6 +31,7 @@ interface LayoutConfig {
   treePanelClassName: string;
   leftContainerClassName: string;
   chatPanelClassName: string;
+  codeViewerClassName: string;
   hasDirectories: boolean;
   isFullyExpanded: boolean;
   treeContainerRef: RefObject<HTMLDivElement | null>;
@@ -339,16 +340,20 @@ const useChatPageState = (): UseChatPageStateResult => {
     "transition-[flex-basis,max-width,min-width,opacity,transform,padding] duration-500 ease-in-out";
 
   const treePanelClassName = hasOpenTabs
-    ? `flex flex-col p-1 flex-shrink-0 basis-[43%] max-w-[620px] min-w-[300px] ${panelTransition}`
-    : `flex flex-col p-1 flex-1 min-w-0 grow ${panelTransition}`;
+    ? `flex flex-col p-1 flex-shrink-0 basis-[30%] max-w-[620px] min-w-[300px] ${panelTransition}`
+    : `flex flex-col p-1 flex-shrink-0 basis-[100%] min-w-0 ${panelTransition}`;
 
   const leftContainerClassName = hasOpenTabs
     ? `flex bg-gray-900/70 border border-gray-700 rounded-xl shadow-lg overflow-hidden basis-[70%] flex-shrink-0 ${panelTransition}`
-    : `flex bg-gray-900/70 border border-gray-700 rounded-xl shadow-lg overflow-hidden flex-1 ${panelTransition}`;
+    : `flex bg-gray-900/70 border border-gray-700 rounded-xl shadow-lg overflow-hidden basis-[50%] flex-shrink-0 ${panelTransition}`;
 
   const chatPanelClassName = hasOpenTabs
     ? `bg-gray-900/70 border border-gray-700 p-6 rounded-xl shadow-lg flex flex-col flex-shrink-0 basis-[30%] max-w-[75%] min-w-[320px] ${panelTransition}`
     : `bg-gray-900/70 border border-gray-700 p-6 rounded-xl shadow-lg flex flex-col flex-shrink-0 basis-[50%] max-w-[75%] min-w-[320px] ${panelTransition}`;
+
+  const codeViewerClassName = hasOpenTabs
+    ? `flex flex-col overflow-hidden ${panelTransition} basis-[70%] max-w-[75%] min-w-0 opacity-100 translate-x-0 pt-2 pr-2 pb-2 pl-0`
+    : `flex flex-col overflow-hidden ${panelTransition} basis-[0%] max-w-[0%] min-w-0 opacity-0 -translate-x-4 pt-2 pr-0 pb-2 pl-0`;
 
   // When forcing environment variable and it exists, treat as having API key
   // In debug mode, allow functionality even if env var not set for testing
@@ -1185,6 +1190,7 @@ const useChatPageState = (): UseChatPageStateResult => {
     treePanelClassName,
     leftContainerClassName,
     chatPanelClassName,
+    codeViewerClassName,
     hasDirectories: allDirectoryPaths.length > 0,
     isFullyExpanded,
     treeContainerRef,
