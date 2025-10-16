@@ -7,6 +7,7 @@ import ClearRepositoriesModal from "./components/ClearRepositoriesModal";
 import ApiKeyBanner from "./components/ApiKeyBanner";
 import ApiKeyModal from "./components/ApiKeyModal";
 import DebugPanel from "./components/DebugPanel";
+import ResizeHandle from "./components/ResizeHandle";
 import useChatPageState from "./hooks/useChatPageState";
 
 export default function Chat() {
@@ -42,15 +43,25 @@ export default function Chat() {
       <div className="flex w-full max-w-[120rem] flex-1 gap-4 overflow-hidden">
         <div className={layout.leftContainerClassName}>
           <TreePanel className={layout.treePanelClassName} {...treePanel} />
-
-          <div className={layout.codeViewerClassName}>
-            {codeViewer.tabs.length > 0 && (
-              <CodeViewer className="flex-1 flex flex-col pt-2 pr-2 pb-2 pl-0 max-w-full min-w-0" {...codeViewer} />
-            )}
-          </div>
         </div>
 
-        <ChatPanel className={layout.chatPanelClassName} {...chatPanel} />
+        {codeViewer.tabs.length > 0 && (
+          <>
+            <div
+              className={layout.codeViewerClassName}
+              style={{ width: `${layout.codeViewerWidth}%` }}
+            >
+              <CodeViewer className="flex-1 flex flex-col pt-2 pr-2 pb-2 pl-0 max-w-full min-w-0 bg-gray-900/70 border border-gray-700 rounded-xl shadow-lg overflow-hidden" {...codeViewer} />
+            </div>
+
+            <ResizeHandle onResize={layout.onResize} />
+          </>
+        )}
+
+        <ChatPanel
+          className={layout.chatPanelClassName}
+          {...chatPanel}
+        />
       </div>
 
       <ClearChatModal {...clearChatModal} />

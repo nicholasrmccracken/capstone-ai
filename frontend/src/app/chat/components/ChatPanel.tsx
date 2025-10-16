@@ -5,6 +5,7 @@ import type { Message } from "../types";
 
 interface ChatPanelProps {
   className: string;
+  style?: React.CSSProperties;
   title?: string;
   messages: Message[];
   chatMessagesRef: RefObject<HTMLDivElement | null>;
@@ -28,6 +29,7 @@ interface ChatPanelProps {
 
 const ChatPanel = ({
   className,
+  style,
   title = "Conversation",
   messages,
   chatMessagesRef,
@@ -48,7 +50,7 @@ const ChatPanel = ({
   onManageApiKeyClick,
   onAtButtonClick,
 }: ChatPanelProps) => (
-  <div className={className}>
+  <div className={className} style={style}>
     <div className="flex items-center justify-between mb-3">
       <h3 className="text-lg font-semibold text-gray-200">{title}</h3>
       <button

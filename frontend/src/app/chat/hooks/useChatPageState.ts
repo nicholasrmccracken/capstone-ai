@@ -37,6 +37,8 @@ interface LayoutConfig {
   treeContainerRef: RefObject<HTMLDivElement | null>;
   isApiKeySet: boolean;
   onManageApiKeyClick: () => void;
+  codeViewerWidth: number;
+  onResize: (deltaX: number) => void;
 }
 
 export interface CodeViewerBinding {
@@ -177,12 +179,20 @@ const useChatPageState = (): UseChatPageStateResult => {
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
   const [debugForceEnv, setDebugForceEnv] = useState(false);
   const [debugForceUser, setDebugForceUser] = useState(false);
+  const [codeViewerWidth, setCodeViewerWidth] = useState(40);
 
   const activeTab = useMemo(
     () => tabs.find((t) => t.id === activeTabId),
     [tabs, activeTabId]
   );
   const hasOpenTabs = tabs.length > 0;
+
+  const handleResize = useCallback((deltaX: number) => {
+    setCodeViewerWidth((prevWidth) => {
+      const newWidth = prevWidth + (deltaX / window.innerWidth) * 100;
+      return Math.max(20, Math.min(60, newWidth));
+    });
+  }, []);
 
   const persistApiKey = (value: string) => {
     if (typeof window === "undefined") return;
@@ -337,23 +347,21 @@ const useChatPageState = (): UseChatPageStateResult => {
   }, [apiKeyUpdatedAt]);
 
   const panelTransition =
-    "transition-[flex-basis,max-width,min-width,opacity,transform,padding] duration-500 ease-in-out";
+    "transition-all duration-300 ease-in-out";
 
   const treePanelClassName = hasOpenTabs
-    ? `flex flex-col p-1 flex-shrink-0 basis-[30%] max-w-[620px] min-w-[300px] ${panelTransition}`
-    : `flex flex-col p-1 flex-shrink-0 basis-[100%] min-w-0 ${panelTransition}`;
+    ? `flex flex-col p-1 flex-shrink-0 basis-[30%] max-w-[620px] min-w-[300px]`
+    : `flex flex-col p-1 flex-1 min-w-0`;
 
   const leftContainerClassName = hasOpenTabs
-    ? `flex bg-gray-900/70 border border-gray-700 rounded-xl shadow-lg overflow-hidden basis-[70%] flex-shrink-0 ${panelTransition}`
-    : `flex bg-gray-900/70 border border-gray-700 rounded-xl shadow-lg overflow-hidden basis-[50%] flex-shrink-0 ${panelTransition}`;
+    ? `bg-gray-900/70 border border-gray-700 rounded-xl shadow-lg overflow-hidden flex-shrink-0 ${panelTransition}`
+    : `bg-gray-900/70 border border-gray-700 rounded-xl shadow-lg overflow-hidden flex-1 flex-shrink-0 ${panelTransition}`;
 
   const chatPanelClassName = hasOpenTabs
-    ? `bg-gray-900/70 border border-gray-700 p-6 rounded-xl shadow-lg flex flex-col flex-shrink-0 basis-[30%] max-w-[75%] min-w-[320px] ${panelTransition}`
-    : `bg-gray-900/70 border border-gray-700 p-6 rounded-xl shadow-lg flex flex-col flex-shrink-0 basis-[50%] max-w-[75%] min-w-[320px] ${panelTransition}`;
+    ? `bg-gray-900/70 border border-gray-700 p-6 rounded-xl shadow-lg flex flex-col flex-1 min-w-[320px] ${panelTransition}`
+    : `bg-gray-900/70 border border-gray-700 p-6 rounded-xl shadow-lg flex flex-col flex-1 min-w-[320px] ${panelTransition}`;
 
-  const codeViewerClassName = hasOpenTabs
-    ? `flex flex-col overflow-hidden ${panelTransition} basis-[70%] max-w-[75%] min-w-0 opacity-100 translate-x-0 pt-2 pr-2 pb-2 pl-0`
-    : `flex flex-col overflow-hidden ${panelTransition} basis-[0%] max-w-[0%] min-w-0 opacity-0 -translate-x-4 pt-2 pr-0 pb-2 pl-0`;
+  const codeViewerClassName = `flex flex-col overflow-hidden flex-shrink-0`;
 
   // When forcing environment variable and it exists, treat as having API key
   // In debug mode, allow functionality even if env var not set for testing
@@ -1196,6 +1204,8 @@ const useChatPageState = (): UseChatPageStateResult => {
     treeContainerRef,
     isApiKeySet: hasApiKey,
     onManageApiKeyClick: () => setIsApiKeyModalOpen(true),
+    codeViewerWidth,
+    onResize: handleResize,
   };
 
   const treePanel: TreePanelBinding = useMemo(() => ({

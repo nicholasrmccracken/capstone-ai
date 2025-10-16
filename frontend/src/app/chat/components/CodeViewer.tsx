@@ -20,7 +20,7 @@ const renderFileContentWithLines = (content: string | null) => {
   if (!content) return <p>Loading...</p>;
   const lines = content.split("\n");
   return (
-    <pre className="text-sm text-gray-300 font-mono whitespace-pre overflow-x-scroll max-w-none">
+    <pre className="text-sm text-gray-300 font-mono whitespace-pre max-w-none">
       {lines.map((line, index) => (
         <div key={index} className="flex min-w-0">
           <span className="inline-block w-8 text-right pr-2 select-none text-gray-500 flex-shrink-0">
