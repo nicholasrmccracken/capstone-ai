@@ -21,3 +21,11 @@ export interface RepoDetails {
   repo: string;
   defaultBranch: string;
 }
+
+export interface Repository {
+  owner: string;
+  repo: string;
+  defaultBranch: string;
+  url: string;
+  displayName: string; // Format: "owner/repo"
+}

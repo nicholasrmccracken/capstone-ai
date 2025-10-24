@@ -9,7 +9,7 @@ import type {
   RefObject,
 } from "react";
 import { getAllDirectoryPaths, getAllFilePaths } from "../utils/tree";
-import type { Message, RepoDetails, Tab, TreeStructure } from "../types";
+import type { Message, RepoDetails, Repository, Tab, TreeStructure } from "../types";
 
 const createInitialMessages = (): Message[] => [
   {
@@ -32,6 +32,10 @@ interface LayoutConfig {
   leftContainerClassName: string;
   chatPanelClassName: string;
   codeViewerClassName: string;
+  shouldRenderCodeViewer: boolean;
+  codeViewerVisibleWidth: number;
+  codeViewerOpacity: number;
+  isResizingPanels: boolean;
   hasDirectories: boolean;
   isFullyExpanded: boolean;
   treeContainerRef: RefObject<HTMLDivElement | null>;
@@ -39,6 +43,8 @@ interface LayoutConfig {
   onManageApiKeyClick: () => void;
   codeViewerWidth: number;
   onResize: (deltaX: number) => void;
+  onResizeStart: () => void;
+  onResizeEnd: () => void;
 }
 
 export interface CodeViewerBinding {
@@ -59,6 +65,10 @@ export interface TreePanelBinding {
   onUrlChange: (value: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onClearRepositoriesClick: () => void;
+  repositories: Repository[];
+  selectedRepoId: string | null;
+  onRepoSelect: (repoId: string) => void;
+  onDeleteRepository: (repoId: string) => void;
   treeStructure: TreeStructure | null;
   treeError: string | null;
   isLoadingTree: boolean;
@@ -143,7 +153,8 @@ interface UseChatPageStateResult {
 
 const useChatPageState = (): UseChatPageStateResult => {
   const [url, setUrl] = useState("");
-  const [repoUrl, setRepoUrl] = useState("");
+  const [repositories, setRepositories] = useState<Repository[]>([]);
+  const [selectedRepoId, setSelectedRepoId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>(createInitialMessages);
   const [inputMessage, setInputMessage] = useState("");
   const [treeStructure, setTreeStructure] = useState<TreeStructure | null>(null);
@@ -180,6 +191,16 @@ const useChatPageState = (): UseChatPageStateResult => {
   const [debugForceEnv, setDebugForceEnv] = useState(false);
   const [debugForceUser, setDebugForceUser] = useState(false);
   const [codeViewerWidth, setCodeViewerWidth] = useState(40);
+  const [renderedCodeViewerWidth, setRenderedCodeViewerWidth] = useState(0);
+  const [isResizingPanels, setIsResizingPanels] = useState(false);
+
+  // Get currently selected repository
+  const selectedRepo = useMemo(
+    () => repositories.find((r) => r.displayName === selectedRepoId) || null,
+    [repositories, selectedRepoId]
+  );
+
+  const repoUrl = selectedRepo?.url || "";
 
   const activeTab = useMemo(
     () => tabs.find((t) => t.id === activeTabId),
@@ -192,6 +213,14 @@ const useChatPageState = (): UseChatPageStateResult => {
       const newWidth = prevWidth + (deltaX / window.innerWidth) * 100;
       return Math.max(20, Math.min(60, newWidth));
     });
+  }, []);
+
+  const handleResizeStart = useCallback(() => {
+    setIsResizingPanels(true);
+  }, []);
+
+  const handleResizeEnd = useCallback(() => {
+    setIsResizingPanels(false);
   }, []);
 
   const persistApiKey = (value: string) => {
@@ -346,22 +375,28 @@ const useChatPageState = (): UseChatPageStateResult => {
     }
   }, [apiKeyUpdatedAt]);
 
-  const panelTransition =
-    "transition-all duration-300 ease-in-out";
+  const panelTransition = isResizingPanels
+    ? ""
+    : "transition-all duration-300 ease-in-out";
 
-  const treePanelClassName = hasOpenTabs
-    ? `flex flex-col p-1 flex-shrink-0 basis-[30%] max-w-[620px] min-w-[300px]`
-    : `flex flex-col p-1 flex-1 min-w-0`;
+  const treePanelClassName = `flex flex-col flex-1 min-h-0 min-w-0 p-1`;
 
-  const leftContainerClassName = hasOpenTabs
-    ? `bg-gray-900/70 border border-gray-700 rounded-xl shadow-lg overflow-hidden flex-shrink-0 ${panelTransition}`
-    : `bg-gray-900/70 border border-gray-700 rounded-xl shadow-lg overflow-hidden flex-1 flex-shrink-0 ${panelTransition}`;
+  const leftContainerClassNameBase = hasOpenTabs
+    ? "bg-gray-900/70 border border-gray-700 rounded-xl shadow-lg overflow-hidden flex flex-col min-h-0 flex-shrink-0 basis-[30%] max-w-[620px] min-w-[300px]"
+    : "bg-gray-900/70 border border-gray-700 rounded-xl shadow-lg overflow-hidden flex flex-col min-h-0 flex-1 flex-shrink-0";
+  const leftContainerClassName = panelTransition
+    ? `${leftContainerClassNameBase} ${panelTransition}`
+    : leftContainerClassNameBase;
 
-  const chatPanelClassName = hasOpenTabs
-    ? `bg-gray-900/70 border border-gray-700 p-6 rounded-xl shadow-lg flex flex-col flex-1 min-w-[320px] ${panelTransition}`
-    : `bg-gray-900/70 border border-gray-700 p-6 rounded-xl shadow-lg flex flex-col flex-1 min-w-[320px] ${panelTransition}`;
+  const chatPanelClassNameBase = "bg-gray-900/70 border border-gray-700 p-6 rounded-xl shadow-lg flex flex-col flex-1 min-w-[320px] min-h-0";
+  const chatPanelClassName = panelTransition
+    ? `${chatPanelClassNameBase} ${panelTransition}`
+    : chatPanelClassNameBase;
 
-  const codeViewerClassName = `flex flex-col overflow-hidden flex-shrink-0`;
+  const codeViewerClassNameBase = "flex flex-col overflow-hidden flex-shrink-0 min-h-0";
+  const codeViewerClassName = panelTransition
+    ? `${codeViewerClassNameBase} ${panelTransition}`
+    : codeViewerClassNameBase;
 
   // When forcing environment variable and it exists, treat as having API key
   // In debug mode, allow functionality even if env var not set for testing
@@ -388,6 +423,21 @@ const useChatPageState = (): UseChatPageStateResult => {
     const timeout = setTimeout(() => setIsCodeViewerMounted(false), 300);
     return () => clearTimeout(timeout);
   }, [hasOpenTabs]);
+
+  useEffect(() => {
+    if (hasOpenTabs) {
+      if (isResizingPanels) {
+        setRenderedCodeViewerWidth(codeViewerWidth);
+        return;
+      }
+      // Run on the next frame so the width transition animates from 0 -> target
+      const raf = requestAnimationFrame(() => {
+        setRenderedCodeViewerWidth(codeViewerWidth);
+      });
+      return () => cancelAnimationFrame(raf);
+    }
+    setRenderedCodeViewerWidth(0);
+  }, [hasOpenTabs, codeViewerWidth, isResizingPanels]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -453,6 +503,99 @@ const useChatPageState = (): UseChatPageStateResult => {
       }
     }
   }, []);
+
+  // Fetch repositories from backend
+  const fetchRepositories = async () => {
+    try {
+      const backendUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
+      const response = await fetch(`${backendUrl}/api/repositories`);
+      const data = await response.json();
+
+      if (data.status === "success") {
+        const repos: Repository[] = data.repositories.map((r: any) => ({
+          owner: r.repo_owner,
+          repo: r.repo_name,
+          defaultBranch: "", // Will be loaded when selected
+          url: `https://github.com/${r.repo_owner}/${r.repo_name}`,
+          displayName: `${r.repo_owner}/${r.repo_name}`,
+        }));
+        setRepositories(repos);
+
+        // Auto-select first repo if none selected
+        if (repos.length > 0 && !selectedRepoId) {
+          handleRepoSelect(repos[0].displayName);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to fetch repositories:", error);
+    }
+  };
+
+  // Load repositories on mount
+  useEffect(() => {
+    fetchRepositories();
+  }, []);
+
+  // Handle repository selection
+  const handleRepoSelect = async (repoId: string) => {
+    const repo = repositories.find((r) => r.displayName === repoId);
+    if (!repo) return;
+
+    setSelectedRepoId(repoId);
+
+    // Fetch tree for selected repository
+    await fetchDirectoryTree(repo.url);
+  };
+
+  // Handle repository deletion
+  const handleDeleteRepository = async (repoId: string) => {
+    const [owner, repo] = repoId.split("/");
+    try {
+      const backendUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
+      const response = await fetch(
+        `${backendUrl}/api/repositories/${owner}/${repo}`,
+        { method: "DELETE" }
+      );
+      const data = await response.json();
+
+      if (data.status === "success") {
+        setMessages((prev) => [
+          ...prev,
+          {
+            sender: "bot",
+            text: `✅ ${data.message}`,
+            sourceFiles: [],
+          },
+        ]);
+
+        // Remove from list
+        setRepositories((prev) => prev.filter((r) => r.displayName !== repoId));
+
+        // If deleted the selected repo, clear selection
+        if (selectedRepoId === repoId) {
+          setSelectedRepoId(null);
+          setTreeStructure(null);
+          setTreeCurrentPath([]);
+          setExpandedNodes(new Set());
+          setAllFilePaths([]);
+        }
+
+        // Refresh repository list
+        await fetchRepositories();
+      }
+    } catch (error) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          sender: "bot",
+          text: `❌ Failed to delete repository: ${error}`,
+          sourceFiles: [],
+        },
+      ]);
+    }
+  };
 
   const fetchDirectoryTree = async (
     targetRepoUrl: string
@@ -521,7 +664,25 @@ const useChatPageState = (): UseChatPageStateResult => {
 
     if (githubRegex.test(url)) {
       const trimmedUrl = url.trim();
-      setRepoUrl(trimmedUrl);
+
+      // Check if repository already exists
+      const [owner, repo] = trimmedUrl.replace(/\/$/, "").split("/").slice(-2);
+      const repoId = `${owner}/${repo}`;
+      const existingRepo = repositories.find((r) => r.displayName === repoId);
+
+      if (existingRepo) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            sender: "bot",
+            text: `ℹ️ Repository ${repoId} is already ingested. Switching to it.`,
+            sourceFiles: [],
+          },
+        ]);
+        await handleRepoSelect(repoId);
+        return;
+      }
+
       setMessages((prev) => [
         ...prev,
         {
@@ -572,6 +733,10 @@ const useChatPageState = (): UseChatPageStateResult => {
               sourceFiles: [],
             },
           ]);
+
+          // Refresh repositories list and auto-select the new one
+          await fetchRepositories();
+          setSelectedRepoId(repoId);
         } else {
           setMessages((prev) => [
             ...prev,
@@ -1158,8 +1323,10 @@ const useChatPageState = (): UseChatPageStateResult => {
             sourceFiles: [],
           },
         ]);
+        // Clear all repository-related state
+        setRepositories([]);
+        setSelectedRepoId(null);
         setTreeStructure(null);
-        setRepoUrl("");
         setUrl("");
         setTreeCurrentPath([]);
         setTabs([]);
@@ -1199,6 +1366,10 @@ const useChatPageState = (): UseChatPageStateResult => {
     leftContainerClassName,
     chatPanelClassName,
     codeViewerClassName,
+    shouldRenderCodeViewer: isCodeViewerMounted || hasOpenTabs,
+    codeViewerVisibleWidth: isResizingPanels ? codeViewerWidth : renderedCodeViewerWidth,
+    codeViewerOpacity: hasOpenTabs ? 1 : 0,
+    isResizingPanels,
     hasDirectories: allDirectoryPaths.length > 0,
     isFullyExpanded,
     treeContainerRef,
@@ -1206,6 +1377,8 @@ const useChatPageState = (): UseChatPageStateResult => {
     onManageApiKeyClick: () => setIsApiKeyModalOpen(true),
     codeViewerWidth,
     onResize: handleResize,
+    onResizeStart: handleResizeStart,
+    onResizeEnd: handleResizeEnd,
   };
 
   const treePanel: TreePanelBinding = useMemo(() => ({
@@ -1213,6 +1386,10 @@ const useChatPageState = (): UseChatPageStateResult => {
     onUrlChange: (value: string) => setUrl(value),
     onSubmit: handleSubmit,
     onClearRepositoriesClick: () => setShowClearConfirm(true),
+    repositories,
+    selectedRepoId,
+    onRepoSelect: handleRepoSelect,
+    onDeleteRepository: handleDeleteRepository,
     treeStructure,
     treeError,
     isLoadingTree,
@@ -1236,6 +1413,10 @@ const useChatPageState = (): UseChatPageStateResult => {
   }), [
     url,
     handleSubmit,
+    repositories,
+    selectedRepoId,
+    handleRepoSelect,
+    handleDeleteRepository,
     treeStructure,
     treeError,
     isLoadingTree,

@@ -40,21 +40,36 @@ export default function Chat() {
         />
       )}
 
-      <div className="flex w-full max-w-[120rem] flex-1 gap-4 overflow-hidden">
+      <div className="flex w-full max-w-[120rem] flex-1 gap-4 overflow-hidden min-h-0">
         <div className={layout.leftContainerClassName}>
           <TreePanel className={layout.treePanelClassName} {...treePanel} />
         </div>
 
-        {codeViewer.tabs.length > 0 && (
+        {layout.shouldRenderCodeViewer && (
           <>
             <div
               className={layout.codeViewerClassName}
-              style={{ width: `${layout.codeViewerWidth}%` }}
+              style={{
+                width: `${layout.codeViewerVisibleWidth}%`,
+                opacity: layout.codeViewerOpacity,
+                pointerEvents: layout.codeViewerVisibleWidth > 0 ? "auto" : "none",
+              }}
             >
-              <CodeViewer className="flex-1 flex flex-col pt-2 pr-2 pb-2 pl-0 max-w-full min-w-0 bg-gray-900/70 border border-gray-700 rounded-xl shadow-lg overflow-hidden" {...codeViewer} />
+              {codeViewer.tabs.length > 0 && (
+                <CodeViewer
+                  className="flex-1 flex flex-col pt-2 pr-2 pb-2 pl-0 max-w-full min-w-0 bg-gray-900/70 border border-gray-700 rounded-xl shadow-lg overflow-hidden"
+                  {...codeViewer}
+                />
+              )}
             </div>
 
-            <ResizeHandle onResize={layout.onResize} />
+            {codeViewer.tabs.length > 0 && (
+              <ResizeHandle
+                onResize={layout.onResize}
+                onResizeStart={layout.onResizeStart}
+                onResizeEnd={layout.onResizeEnd}
+              />
+            )}
           </>
         )}
 

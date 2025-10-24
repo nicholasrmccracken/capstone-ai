@@ -340,6 +340,93 @@ def search_similar_chunks(
         return []
 
 
+def get_all_repositories():
+    """
+    Retrieve a list of all unique repositories stored in Elasticsearch.
+
+    Returns:
+        List of dictionaries with repo_owner and repo_name
+    """
+    try:
+        es = get_elasticsearch_client()
+
+        if not es.indices.exists(index=INDEX_NAME):
+            return []
+
+        # Use composite aggregation to get unique repo_owner/repo_name pairs
+        response = es.search(
+            index=INDEX_NAME,
+            body={
+                "size": 0,
+                "aggs": {
+                    "unique_repos": {
+                        "composite": {
+                            "size": 100,
+                            "sources": [
+                                {"owner": {"terms": {"field": "repo_owner"}}},
+                                {"name": {"terms": {"field": "repo_name"}}}
+                            ]
+                        }
+                    }
+                }
+            }
+        )
+
+        buckets = response["aggregations"]["unique_repos"]["buckets"]
+        repositories = [
+            {
+                "repo_owner": bucket["key"]["owner"],
+                "repo_name": bucket["key"]["name"]
+            }
+            for bucket in buckets
+        ]
+
+        return repositories
+
+    except Exception as e:
+        print(f"Error fetching repositories: {str(e)}")
+        return []
+
+
+def delete_repository(owner: str, repo: str):
+    """
+    Delete all chunks belonging to a specific repository.
+
+    Args:
+        owner: Repository owner (GitHub username or organization)
+        repo: Repository name
+
+    Returns:
+        Number of deleted documents
+    """
+    try:
+        es = get_elasticsearch_client()
+
+        if not es.indices.exists(index=INDEX_NAME):
+            return 0
+
+        delete_result = es.delete_by_query(
+            index=INDEX_NAME,
+            body={
+                "query": {
+                    "bool": {
+                        "must": [
+                            {"term": {"repo_owner": owner}},
+                            {"term": {"repo_name": repo}}
+                        ]
+                    }
+                }
+            },
+            refresh=True
+        )
+
+        return delete_result["deleted"]
+
+    except Exception as e:
+        print(f"Error deleting repository {owner}/{repo}: {str(e)}")
+        return 0
+
+
 """
 Main ingestion function that processes a GitHub repository into Elasticsearch.
 

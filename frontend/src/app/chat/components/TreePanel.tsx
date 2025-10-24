@@ -1,7 +1,7 @@
 "use client";
 import { memo, useMemo } from "react";
 import type { FormEvent, MouseEvent, RefObject } from "react";
-import type { TreeStructure, RepoDetails } from "../types";
+import type { TreeStructure, RepoDetails, Repository } from "../types";
 
 interface TreePanelProps {
   className: string;
@@ -9,6 +9,10 @@ interface TreePanelProps {
   onUrlChange: (value: string) => void;
   onSubmit: (e: FormEvent<HTMLFormElement>) => void;
   onClearRepositoriesClick: () => void;
+  repositories: Repository[];
+  selectedRepoId: string | null;
+  onRepoSelect: (repoId: string) => void;
+  onDeleteRepository: (repoId: string) => void;
   treeStructure: TreeStructure | null;
   treeError: string | null;
   isLoadingTree: boolean;
@@ -150,6 +154,10 @@ const TreePanel = ({
   onUrlChange,
   onSubmit,
   onClearRepositoriesClick,
+  repositories,
+  selectedRepoId,
+  onRepoSelect,
+  onDeleteRepository,
   treeStructure,
   treeError,
   isLoadingTree,
@@ -235,16 +243,50 @@ const TreePanel = ({
         </p>
       )}
 
-      <div className="mb-4">
-        <button
-          type="button"
-          onClick={onClearRepositoriesClick}
-          className="w-full px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-semibold transition-all flex items-center justify-center gap-2"
-          title="Clear all repositories from Elasticsearch"
-        >
-          Clear Repositories
-        </button>
-      </div>
+      {repositories.length > 0 && (
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-300 mb-2">
+            Select Repository
+          </label>
+          <select
+            value={selectedRepoId || ""}
+            onChange={(e) => onRepoSelect(e.target.value)}
+            className="w-full p-3 border border-gray-600 bg-gray-800 text-white rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="" disabled>
+              Choose a repository...
+            </option>
+            {repositories.map((repo) => (
+              <option key={repo.displayName} value={repo.displayName}>
+                {repo.displayName}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {repositories.length > 0 && (
+        <div className="mb-4 flex gap-2">
+          {selectedRepoId && (
+            <button
+              type="button"
+              onClick={() => onDeleteRepository(selectedRepoId)}
+              className="flex-1 px-3 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-semibold transition-all text-xs sm:text-sm truncate"
+              title={`Delete ${selectedRepoId}`}
+            >
+              Delete {selectedRepoId}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onClearRepositoriesClick}
+            className="flex-1 px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-semibold transition-all text-xs sm:text-sm whitespace-nowrap"
+            title="Clear all repositories from Elasticsearch"
+          >
+            Clear All
+          </button>
+        </div>
+      )}
 
       <div className="flex justify-between items-center mb-2">
         <h3 className="text-xl font-bold text-gray-300">
@@ -264,7 +306,11 @@ const TreePanel = ({
 
       <div
         ref={treeContainerRef}
-        className="flex-1 overflow-auto bg-gray-900 p-2 rounded-md"
+        className="flex-1 min-h-0 overflow-y-auto overflow-x-auto bg-gray-900 p-2 rounded-md scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800"
+        style={{
+          scrollbarWidth: 'thin',
+          scrollbarColor: '#4B5563 #1F2937'
+        }}
       >
         {isLoadingTree && <p className="text-gray-400">Loading tree...</p>}
         {treeError && <p className="text-red-400">{treeError}</p>}

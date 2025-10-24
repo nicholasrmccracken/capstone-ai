@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from ingest_pipeline import ingest_github_repo, search_similar_chunks
+from ingest_pipeline import ingest_github_repo, search_similar_chunks, get_all_repositories, delete_repository
 from config import OPENAI_API_KEY
 from langchain_openai import ChatOpenAI
 
@@ -239,42 +239,23 @@ Provide a detailed explanation focusing on the tagged files:"""
             })
 
         else:
-            # Original chunk-based search logic
-            es_host = os.getenv("ES_HOST")
-            es_user = os.getenv("ES_USER")
-            es_password = os.getenv("ES_PASSWORD")
-            if not es_host or not es_user or not es_password:
-                return jsonify({"status": "error", "message": "Elasticsearch credentials not configured."}), 500
-
-            es = Elasticsearch(
-                hosts=[es_host],
-                basic_auth=(es_user, es_password)
+            # Chunk-based semantic search with repository filtering
+            repo_filter = f"{owner}/{repo}"
+            chunks = search_similar_chunks(
+                query_text,
+                repo_filter=repo_filter,
+                top_k=5,
+                openai_api_key=api_key
             )
 
-            res = es.search(
-                index="repo_chunks",
-                body={
-                    "query": {
-                        "match": {
-                            "content": query_text
-                        }
-                    },
-                    "size": 5
-                }
-            )
-
-            hits = res["hits"]["hits"]
-            if not hits:
+            if not chunks:
                 return jsonify({"response": "No results found."})
 
-            # Extract unique file paths from search results and deduplicate
-            all_source_files = [hit["_source"].get(
-                "file_path", "") for hit in hits if hit["_source"].get("file_path")]
-            # Preserve order while removing duplicates
-            source_files = list(dict.fromkeys(all_source_files))
+            # Extract unique file paths from search results
+            source_files = list(dict.fromkeys([chunk["file_path"] for chunk in chunks]))
 
-            context = "\n\n".join(
-                [hit["_source"].get("content", "No content") for hit in hits])
+            # Build context from chunks
+            context = "\n\n".join([chunk["content"] for chunk in chunks])
 
             prompt = f"""
 You are RepoRover, a chatbot that answers questions about GitHub repositories.
@@ -324,6 +305,41 @@ def test_url():
     github_url = request.json.get("github_url")
     owner, repo_name = github_url.strip("/").split("/")[-2:]
     return jsonify({"owner": owner, "repo_name": repo_name})
+
+
+@app.route("/api/repositories", methods=["GET"])
+def list_repositories():
+    """List all ingested repositories from Elasticsearch."""
+    try:
+        repositories = get_all_repositories()
+        return jsonify({
+            "status": "success",
+            "repositories": repositories
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Failed to fetch repositories: {str(e)}"}), 500
+
+
+@app.route("/api/repositories/<owner>/<repo>", methods=["DELETE"])
+def delete_single_repository(owner: str, repo: str):
+    """Delete a specific repository from Elasticsearch."""
+    try:
+        deleted_count = delete_repository(owner, repo)
+
+        if deleted_count == 0:
+            return jsonify({
+                "status": "success",
+                "message": f"No chunks found for repository {owner}/{repo}.",
+                "deleted_chunks": 0
+            })
+
+        return jsonify({
+            "status": "success",
+            "message": f"Successfully deleted {deleted_count} chunks from {owner}/{repo}.",
+            "deleted_chunks": deleted_count
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Failed to delete repository: {str(e)}"}), 500
 
 
 @app.route("/api/clear_repositories", methods=["DELETE"])

@@ -1,15 +1,19 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
+import type { MouseEvent as ReactMouseEvent } from "react";
 
 interface ResizeHandleProps {
   onResize: (deltaX: number) => void;
+  onResizeStart?: () => void;
+  onResizeEnd?: () => void;
 }
 
-const ResizeHandle = ({ onResize }: ResizeHandleProps) => {
+const ResizeHandle = ({ onResize, onResizeStart, onResizeEnd }: ResizeHandleProps) => {
   const [isDragging, setIsDragging] = useState(false);
   const startXRef = useRef(0);
   const rafRef = useRef<number | null>(null);
   const pendingDeltaRef = useRef(0);
+  const hasNotifiedResizeEndRef = useRef(true);
 
   const updateSize = useCallback(() => {
     if (pendingDeltaRef.current !== 0) {
@@ -43,6 +47,8 @@ const ResizeHandle = ({ onResize }: ResizeHandleProps) => {
         onResize(pendingDeltaRef.current);
         pendingDeltaRef.current = 0;
       }
+      onResizeEnd?.();
+      hasNotifiedResizeEndRef.current = true;
     };
 
     if (isDragging) {
@@ -60,14 +66,20 @@ const ResizeHandle = ({ onResize }: ResizeHandleProps) => {
       if (rafRef.current !== null) {
         cancelAnimationFrame(rafRef.current);
       }
+      if (isDragging && !hasNotifiedResizeEndRef.current) {
+        onResizeEnd?.();
+        hasNotifiedResizeEndRef.current = true;
+      }
     };
-  }, [isDragging, updateSize, onResize]);
+  }, [isDragging, updateSize, onResize, onResizeEnd]);
 
-  const handleMouseDown = (e: React.MouseEvent) => {
+  const handleMouseDown = (e: ReactMouseEvent) => {
     e.preventDefault();
     startXRef.current = e.clientX;
     pendingDeltaRef.current = 0;
+    hasNotifiedResizeEndRef.current = false;
     setIsDragging(true);
+    onResizeStart?.();
   };
 
   return (
