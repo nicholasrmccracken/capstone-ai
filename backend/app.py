@@ -48,7 +48,7 @@ def build_chat_model(api_key: str) -> ChatOpenAI:
     Create a ChatOpenAI client with common configuration.
     """
     return ChatOpenAI(
-        model="gpt-3.5-turbo",
+        model="gpt-5-nano",
         temperature=0.1,
         api_key=api_key
     )
