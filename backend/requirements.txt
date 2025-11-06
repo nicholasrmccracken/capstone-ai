@@ -3,14 +3,11 @@ flask-cors
 requests
 aiohttp
 tiktoken
-langchain
+langchain-core
 langchain-text-splitters
 langchain-openai
 langchain-community
+langsmith
 elasticsearch==7.17.9
 python-dotenv
 PyGithub
-
-langchain-core
-langsmith
-python-dotenv

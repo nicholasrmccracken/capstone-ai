@@ -7,8 +7,9 @@ including text splitting, embedding generation, and indexing for semantic search
 
 from github_utils import get_repo_files, get_file_content
 from langchain_community.document_loaders import TextLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_text_splitters import Language
+
 try:
     from langchain_text_splitters import MarkdownHeaderTextSplitter
 except ImportError:
