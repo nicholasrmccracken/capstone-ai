@@ -1044,7 +1044,12 @@ const useChatPageState = (): UseChatPageStateResult => {
       setTabs((prevTabs) =>
         prevTabs.map((tab) =>
           tab.id === tabId && tab.filePath === expectedPath
-            ? { ...tab, fileContent: data.content }
+            ? {
+                ...tab,
+                fileContent: data.content,
+                fileType: data.type,
+                contentType: data.content_type
+              }
             : tab
         )
       );

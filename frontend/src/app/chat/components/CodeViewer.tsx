@@ -33,6 +33,58 @@ const renderFileContentWithLines = (content: string | null) => {
   );
 };
 
+const renderFileContent = (tab: Tab | undefined) => {
+  if (!tab) {
+    return <p className="text-gray-500 p-2">Open a file from the explorer on the left.</p>;
+  }
+
+  if (!tab.filePath) {
+    return (
+      <p className="text-gray-500 p-2">
+        Select a file by clicking in the explorer to load content here.
+      </p>
+    );
+  }
+
+  if (!tab.fileContent) {
+    return <p className="text-gray-300 p-2">Loading...</p>;
+  }
+
+  // Handle images
+  if (tab.fileType === "image") {
+    return (
+      <div className="flex items-center justify-center h-full bg-gray-900 p-4">
+        <div className="max-w-full max-h-full overflow-auto">
+          <img
+            src={`data:${tab.contentType};base64,${tab.fileContent}`}
+            alt={tab.name}
+            className="max-w-full h-auto"
+            style={{ maxHeight: '80vh' }}
+          />
+          <p className="text-center text-gray-400 mt-2 text-sm">{tab.name}</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Handle PDFs
+  if (tab.fileType === "pdf") {
+    return (
+      <div className="h-full w-full bg-gray-900">
+        <iframe
+          src={`data:application/pdf;base64,${tab.fileContent}`}
+          className="w-full h-full"
+          title={tab.name}
+          style={{ minHeight: '600px' }}
+        />
+      </div>
+    );
+  }
+
+  // Handle text files (existing logic)
+  return renderFileContentWithLines(tab.fileContent);
+};
+
 const CodeViewer = ({
   className,
   tabs,
@@ -87,17 +139,7 @@ const CodeViewer = ({
       </button>
     </div>
     <div className="flex-1 overflow-y-auto overflow-x-auto bg-gray-900 p-0 rounded-md max-w-none min-h-0">
-      {activeTab ? (
-        activeTab.filePath ? (
-          renderFileContentWithLines(activeTab.fileContent)
-        ) : (
-          <p className="text-gray-500 p-2">
-            Select a file by clicking in the explorer to load content here.
-          </p>
-        )
-      ) : (
-        <p className="text-gray-500 p-2">Open a file from the explorer on the left.</p>
-      )}
+      {renderFileContent(activeTab)}
     </div>
   </div>
 );

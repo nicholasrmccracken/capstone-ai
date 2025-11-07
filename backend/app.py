@@ -151,8 +151,60 @@ def get_file_content():
         g = Github(auth=Auth.Token(github_token))
         repo_obj = g.get_repo(f"{owner}/{repo}")
         file = repo_obj.get_contents(path, ref=branch)
-        content = base64.b64decode(file.content).decode("utf-8")
-        return jsonify({"status": "success", "content": content})
+
+        # Detect file type based on extension
+        path_lower = path.lower()
+
+        # Image file extensions
+        IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.svg', '.ico'}
+
+        # Check if file is an image
+        if any(path_lower.endswith(ext) for ext in IMAGE_EXTENSIONS):
+            content_type_map = {
+                '.png': 'image/png',
+                '.jpg': 'image/jpeg',
+                '.jpeg': 'image/jpeg',
+                '.gif': 'image/gif',
+                '.bmp': 'image/bmp',
+                '.webp': 'image/webp',
+                '.svg': 'image/svg+xml',
+                '.ico': 'image/x-icon'
+            }
+            ext = next((e for e in IMAGE_EXTENSIONS if path_lower.endswith(e)), '.png')
+            content_type = content_type_map.get(ext, 'image/png')
+
+            return jsonify({
+                "status": "success",
+                "type": "image",
+                "content": file.content,  # Already base64 from PyGithub
+                "content_type": content_type,
+                "filename": path.split('/')[-1]
+            })
+
+        # Check if file is a PDF
+        elif path_lower.endswith('.pdf'):
+            return jsonify({
+                "status": "success",
+                "type": "pdf",
+                "content": file.content,  # Already base64 from PyGithub
+                "filename": path.split('/')[-1]
+            })
+
+        # Text files - decode as UTF-8
+        else:
+            try:
+                content = base64.b64decode(file.content).decode("utf-8")
+                return jsonify({
+                    "status": "success",
+                    "type": "text",
+                    "content": content
+                })
+            except UnicodeDecodeError:
+                return jsonify({
+                    "status": "error",
+                    "message": "File is binary and cannot be displayed as text. Supported formats: images (PNG, JPG, GIF, etc.), PDFs, and text files."
+                }), 400
+
     except UnknownObjectException:
         return jsonify({"status": "error", "message": "File not found."}), 404
     except Exception as e:

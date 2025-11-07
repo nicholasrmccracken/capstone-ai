@@ -14,6 +14,8 @@ export interface Tab {
   color: string;
   filePath: string | null;
   fileContent: string | null;
+  fileType?: "text" | "image" | "pdf";
+  contentType?: string;
 }
 
 export interface RepoDetails {
