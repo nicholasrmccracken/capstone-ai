@@ -724,12 +724,12 @@ const useChatPageState = (): UseChatPageStateResult => {
         });
         const data = await response.json();
 
-        if (data.status === "started") {
+        if (data.status === "completed") {
           setMessages((prev) => [
             ...prev,
             {
               sender: "bot",
-              text: "✅ Repository ingestion started. Processing may take a few minutes. You will be able to chat once ingestion finishes.",
+              text: "✅ Repository ingestion completed successfully! You can now chat about this repository.",
               sourceFiles: [],
             },
           ]);

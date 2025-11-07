@@ -3,6 +3,7 @@ from flask_cors import CORS
 from ingest_pipeline import ingest_github_repo, search_similar_chunks, get_all_repositories, delete_repository
 from config import OPENAI_API_KEY
 from langchain_openai import ChatOpenAI
+from prompts import get_file_tagged_prompt, get_general_query_prompt, get_chat_prompt
 
 import os
 from typing import Any, Dict, Optional
@@ -67,7 +68,7 @@ def ingest():
 
     try:
         ingest_github_repo(github_url, openai_api_key=api_key)
-        return jsonify({"status": "started"})
+        return jsonify({"status": "completed"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -179,8 +180,32 @@ def query():
 
         if tagged_files:
             # Handle @file tagged queries - fetch full file contents
+            # Define unsupported binary/media file extensions
+            UNSUPPORTED_EXTENSIONS = {
+                '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.ico', '.svg',
+                '.tiff', '.tif', '.psd', '.ai', '.eps', '.indd',
+                '.mp4', '.avi', '.mov', '.wmv', '.flv', '.webm', '.mkv', '.3gp',
+                '.mp3', '.wav', '.flac', '.aac', '.ogg', '.wma', '.m4a',
+                '.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.xz',
+                '.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx',
+                '.exe', '.dll', '.so', '.dylib', '.app', '.deb', '.rpm',
+                '.iso', '.dmg', '.pkg', '.appimage'
+            }
+
             file_contexts = []
             for file_path in tagged_files:
+                # Check if file has an unsupported extension
+                file_lower = file_path.lower()
+                is_unsupported = any(file_lower.endswith(ext) for ext in UNSUPPORTED_EXTENSIONS)
+
+                if is_unsupported:
+                    file_contexts.append(
+                        f"## File: {file_path}\n\n"
+                        f"📄 This is a binary or media file that cannot be displayed as text. "
+                        f"Supported formats include source code and text files."
+                    )
+                    continue
+
                 try:
                     g = Github(auth=Auth.Token(github_token))
                     repo_obj = g.get_repo(f"{owner}/{repo}")
@@ -203,32 +228,19 @@ def query():
 {content}
 ```""")
 
+                except UnicodeDecodeError:
+                    file_contexts.append(
+                        f"## File: {file_path}\n\n"
+                        f"📄 This file appears to be binary and cannot be displayed as text. "
+                        f"Supported formats include source code and text files."
+                    )
                 except Exception as e:
                     file_contexts.append(
                         f"## File: {file_path}\n\n❌ Error loading file: {str(e)}")
 
             full_file_context = "\n\n".join(file_contexts)
 
-            prompt = f"""
-You are RepoRover, a chatbot that explains GitHub repository files.
-
-The user has tagged specific files using @file syntax. Your task is to explain these files clearly and comprehensively.
-
-Instructions:
-- Provide a **complete explanation** of each tagged file
-- Structure your response clearly for each file
-- Include key functions, classes, and important patterns
-- Show **relevant code snippets** to illustrate your points
-- Explain the file's purpose, main components, and how it fits into the broader codebase
-- Use markdown formatting with file headers and code blocks
-- Include line number references where helpful (e.g., "Lines 15-25 define the main class")
-
-Tagged files context:
-{full_file_context}
-
-User's question: {query_text}
-
-Provide a detailed explanation focusing on the tagged files:"""
+            prompt = get_file_tagged_prompt(full_file_context, query_text)
 
             response = llm.invoke(prompt)
             answer = response.content.strip()
@@ -257,25 +269,7 @@ Provide a detailed explanation focusing on the tagged files:"""
             # Build context from chunks
             context = "\n\n".join([chunk["content"] for chunk in chunks])
 
-            prompt = f"""
-You are RepoRover, a chatbot that answers questions about GitHub repositories.
-
-Instructions:
-- The user does NOT see the raw code context. You must always include any relevant code snippets in your answer. HOWEVER NEVER MENTION "the provided code" as this is invisible to the user.
-- When including code, show only the minimal, most relevant lines. Never dump entire files unless absolutely necessary.
-- Clearly explain what the code does in simple terms, as if the user has no prior view of it.
-- Structure your answers:
-  1. Start with an **Explanation** of what the code is doing.
-  2. Show **Relevant Code Excerpts** (only the key lines/functions/conditions). Split the relevant code into multiple code blocks if needed.
-  3. Provide any **step-by-step reasoning or clarification** if needed.
-- If the code context is not enough to fully answer, acknowledge this and suggest what additional information might be required.
-
-Format your response in markdown, using headings, bullet points, and code blocks as appropriate. Insert blank lines between sections for readability.
-
-Code context:
-{context}
-
-Answer:"""
+            prompt = get_general_query_prompt(context, query_text)
 
             response = llm.invoke(prompt)
             answer = response.content.strip()
@@ -415,16 +409,7 @@ def chat():
         ])
 
         # Prepare prompt for the LLM
-        prompt = f"""
-Based on the following code chunks from a repository, please answer the user's question.
-Provide a clear, concise answer with specific details from the code when relevant.
-
-Code context:
-{context}
-
-Question: {question}
-
-Answer:"""
+        prompt = get_chat_prompt(context, question)
 
         # Generate response using OpenAI
         response = llm.invoke(prompt)
