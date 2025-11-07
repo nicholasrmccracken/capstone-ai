@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { RefObject } from "react";
@@ -8,6 +8,7 @@ interface ChatMessagesProps {
   messages: Message[];
   chatMessagesRef: RefObject<HTMLDivElement | null>;
   onSourceFileClick: (filePath: string) => void;
+  isAwaitingResponse: boolean;
 }
 
 const highlightUserTags = (text: string) => {
@@ -55,7 +56,20 @@ const SourceFiles = ({
   );
 };
 
-const ChatMessages = ({ messages, chatMessagesRef, onSourceFileClick }: ChatMessagesProps) => (
+const TypingBubble = () => (
+  <div className="flex items-center gap-2 rounded-full bg-gray-600/80 border border-gray-500/60 px-4 py-2 shadow-inner">
+    {[0, 1, 2].map((dot) => (
+      <span
+        key={dot}
+        className="w-2 h-2 rounded-full bg-gray-200 animate-bounce"
+        style={{ animationDelay: `${dot * 0.15}s` }}
+      />
+    ))}
+    <span className="text-xs text-gray-200 tracking-wide">Thinking…</span>
+  </div>
+);
+
+const ChatMessages = ({ messages, chatMessagesRef, onSourceFileClick, isAwaitingResponse }: ChatMessagesProps) => (
   <div ref={chatMessagesRef} className="flex-1 overflow-y-auto">
     {messages.map((message, index) => (
       <div
@@ -72,9 +86,12 @@ const ChatMessages = ({ messages, chatMessagesRef, onSourceFileClick }: ChatMess
         )}
       </div>
     ))}
+    {isAwaitingResponse && (
+      <div className="mb-3 max-w-[95%] mx-auto flex justify-start">
+        <TypingBubble />
+      </div>
+    )}
   </div>
 );
 
 export default ChatMessages;
-
-

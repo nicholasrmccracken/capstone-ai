@@ -25,6 +25,7 @@ interface ChatPanelProps {
   inputPlaceholder: string;
   onManageApiKeyClick: () => void;
   onAtButtonClick: () => void;
+  isAwaitingResponse: boolean;
 }
 
 const ChatPanel = ({
@@ -49,6 +50,7 @@ const ChatPanel = ({
   inputPlaceholder,
   onManageApiKeyClick,
   onAtButtonClick,
+  isAwaitingResponse,
 }: ChatPanelProps) => (
   <div className={className} style={style}>
     <div className="flex items-center justify-between mb-3">
@@ -66,6 +68,7 @@ const ChatPanel = ({
       messages={messages}
       chatMessagesRef={chatMessagesRef}
       onSourceFileClick={onSourceFileClick}
+      isAwaitingResponse={isAwaitingResponse}
     />
 
     <div className="relative">

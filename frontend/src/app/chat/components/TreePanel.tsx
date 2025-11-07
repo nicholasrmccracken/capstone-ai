@@ -33,6 +33,8 @@ interface TreePanelProps {
   effectiveHasApiKey: boolean;
   onManageApiKeyClick: () => void;
   debugForceEnv: boolean;
+  onAssessRepoClick: () => void;
+  isAssessingRepo: boolean;
 }
 
 interface TreeNodeProps {
@@ -179,6 +181,8 @@ const TreePanel = ({
   effectiveHasApiKey,
   onManageApiKeyClick,
   debugForceEnv,
+  onAssessRepoClick,
+  isAssessingRepo,
 }: TreePanelProps) => {
   const rootName =
     treeCurrentPath.length === 0
@@ -229,6 +233,19 @@ const TreePanel = ({
           Ingest Repo
         </button>
       </form>
+      <button
+        type="button"
+        onClick={onAssessRepoClick}
+        className="w-full mb-4 px-5 py-3 rounded-lg font-semibold transition-all bg-indigo-600 text-white hover:bg-indigo-700 disabled:bg-indigo-900 disabled:text-indigo-200"
+        disabled={
+          isAssessingRepo ||
+          !effectiveHasApiKey ||
+          !repoDetails.owner ||
+          !repoDetails.repo
+        }
+      >
+        {isAssessingRepo ? "Assessing security..." : "Assess Repo Security"}
+      </button>
       {!isApiKeySet && !debugForceEnv && (
         <p className="mb-4 text-xs text-blue-100/80">
           Need a key?{" "}

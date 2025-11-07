@@ -8,6 +8,7 @@ AI-powered GitHub repository analysis assistant that helps understand complex co
 - **File Processing**: Automatically processes all repository files (code, docs, data)
 - **Smart Embeddings**: Uses OpenAI API to create semantic embeddings for intelligent search
 - **Chat Interface**: Ask questions about the repository and get contextual answers with file citations
+- **Security Assessments**: Run AI-powered repository or file-level security reviews with severity-ranked findings
 
 ## How it works
 
@@ -17,6 +18,37 @@ AI-powered GitHub repository analysis assistant that helps understand complex co
 4. **Embeddings** (OpenAI API): Converts code chunks to vector representations
 5. **Search** (Elasticsearch): Vector database for fast semantic search
 6. **Response**: Contextual answers with file and line references
+
+## Security Assessments
+
+RepoRover now supports first-class security reviews:
+
+- **Repository assessments** analyze the indexed chunks for a repo and generate a JSON report of prioritized findings. Trigger them from the UI next to the ingest button or via `POST /api/security/assess_repo` with `owner`, `repo`, and an OpenAI API key (or `github_url`).
+- **File assessments** fetch the latest version of a specific file (plus any available indexed snippets) and audit it in depth. Run them from an open code tab in the UI or call `POST /api/security/assess_file` with `owner`, `repo`, and `file_path`.
+
+Both endpoints return:
+
+```json
+{
+  "scope": "repo | file",
+  "summary": "High-level risk overview",
+  "findings": [
+    {
+      "severity": "high",
+      "title": "Hard-coded secret",
+      "description": "...",
+      "file_path": "backend/app.py",
+      "line_hints": "42-58",
+      "remediation": "Move the secret to a vault",
+      "category": "CWE-798"
+    }
+  ],
+  "sampled_files": ["backend/app.py", "frontend/..."],
+  "ran_at": "2025-11-07T15:30:00Z"
+}
+```
+
+Results are streamed back into chat so you can click cited files to inspect or continue the conversation. If the Elasticsearch index is empty, the backend automatically calls out the limited coverage so you know to ingest before trusting the assessment.
 
 ## How to run
 

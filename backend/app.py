@@ -3,6 +3,10 @@ from flask_cors import CORS
 from ingest_pipeline import ingest_github_repo, search_similar_chunks, get_all_repositories, delete_repository
 from config import OPENAI_API_KEY
 from langchain_openai import ChatOpenAI
+from security_assessment import (
+    run_repo_security_assessment,
+    run_file_security_assessment,
+)
 from prompts import get_file_tagged_prompt, get_general_query_prompt, get_chat_prompt
 
 import os
@@ -476,6 +480,61 @@ def chat():
 
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/security/assess_repo", methods=["POST"])
+def security_assess_repo():
+    payload = request.get_json(silent=True) or {}
+    github_url = payload.get("github_url") or payload.get("repo_url")
+    owner = payload.get("owner")
+    repo = payload.get("repo")
+
+    api_key = resolve_openai_api_key(payload)
+    if not api_key:
+        return jsonify({"status": "error", "message": "OpenAI API key not provided."}), 400
+
+    try:
+        assessment = run_repo_security_assessment(
+            api_key=api_key,
+            github_url=github_url,
+            owner=owner,
+            repo=repo,
+        )
+        return jsonify({"status": "success", "assessment": assessment})
+    except ValueError as exc:
+        return jsonify({"status": "error", "message": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"status": "error", "message": f"Security assessment failed: {str(exc)}"}), 500
+
+
+@app.route("/api/security/assess_file", methods=["POST"])
+def security_assess_file():
+    payload = request.get_json(silent=True) or {}
+    github_url = payload.get("github_url") or payload.get("repo_url")
+    owner = payload.get("owner")
+    repo = payload.get("repo")
+    file_path = payload.get("file_path")
+
+    if not file_path:
+        return jsonify({"status": "error", "message": "file_path is required"}), 400
+
+    api_key = resolve_openai_api_key(payload)
+    if not api_key:
+        return jsonify({"status": "error", "message": "OpenAI API key not provided."}), 400
+
+    try:
+        assessment = run_file_security_assessment(
+            api_key=api_key,
+            github_url=github_url,
+            owner=owner,
+            repo=repo,
+            file_path=file_path,
+        )
+        return jsonify({"status": "success", "assessment": assessment})
+    except ValueError as exc:
+        return jsonify({"status": "error", "message": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"status": "error", "message": f"Security assessment failed: {str(exc)}"}), 500
 
 
 if __name__ == "__main__":

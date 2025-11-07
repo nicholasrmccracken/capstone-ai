@@ -14,6 +14,9 @@ interface CodeViewerProps {
   onDragOver: (event: DragEvent) => void;
   onDrop: (event: DragEvent, targetTabId: number | null) => void;
   onDragEnd: () => void;
+  onAssessActiveFile: (filePath: string) => void;
+  isAssessingFile: boolean;
+  canAssessFiles: boolean;
 }
 
 const renderFileContentWithLines = (content: string | null) => {
@@ -97,6 +100,9 @@ const CodeViewer = ({
   onDragOver,
   onDrop,
   onDragEnd,
+  onAssessActiveFile,
+  isAssessingFile,
+  canAssessFiles,
 }: CodeViewerProps) => (
   <div className={`${className} overflow-hidden`}>
     <div className="flex overflow-x-auto border-b border-gray-700 mb-2 bg-gray-900/40 px-2 flex-shrink-0">
@@ -138,6 +144,18 @@ const CodeViewer = ({
         +
       </button>
     </div>
+    {activeTab?.filePath && (
+      <div className="flex justify-end px-2 pb-2">
+        <button
+          type="button"
+          className="px-3 py-1.5 text-xs sm:text-sm rounded-md border border-blue-400 text-blue-200 hover:bg-blue-500/10 disabled:opacity-60"
+          onClick={() => onAssessActiveFile(activeTab.filePath!)}
+          disabled={isAssessingFile || !canAssessFiles}
+        >
+          {isAssessingFile ? "Assessing..." : "Assess Security"}
+        </button>
+      </div>
+    )}
     <div className="flex-1 overflow-y-auto overflow-x-auto bg-gray-900 p-0 rounded-md max-w-none min-h-0">
       {renderFileContent(activeTab)}
     </div>
@@ -145,6 +163,4 @@ const CodeViewer = ({
 );
 
 export default CodeViewer;
-
-
 

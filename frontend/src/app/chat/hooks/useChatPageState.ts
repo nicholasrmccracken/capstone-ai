@@ -9,7 +9,14 @@ import type {
   RefObject,
 } from "react";
 import { getAllDirectoryPaths, getAllFilePaths } from "../utils/tree";
-import type { Message, RepoDetails, Repository, Tab, TreeStructure } from "../types";
+import type {
+  Message,
+  RepoDetails,
+  Repository,
+  Tab,
+  TreeStructure,
+  SecurityAssessment,
+} from "../types";
 
 const createInitialMessages = (): Message[] => [
   {
@@ -58,6 +65,9 @@ export interface CodeViewerBinding {
   onDragOver: (event: DragEvent) => void;
   onDrop: (event: DragEvent, targetTabId: number | null) => void;
   onDragEnd: () => void;
+  onAssessActiveFile: (filePath: string) => void;
+  isAssessingFile: boolean;
+  canAssessFiles: boolean;
 }
 
 export interface TreePanelBinding {
@@ -89,6 +99,8 @@ export interface TreePanelBinding {
   effectiveHasApiKey: boolean;
   onManageApiKeyClick: () => void;
   debugForceEnv: boolean;
+  onAssessRepoClick: () => void;
+  isAssessingRepo: boolean;
 }
 
 export interface ChatPanelBinding {
@@ -110,6 +122,7 @@ export interface ChatPanelBinding {
   inputPlaceholder: string;
   onManageApiKeyClick: () => void;
   onAtButtonClick: () => void;
+  isAwaitingResponse: boolean;
 }
 
 export interface ClearChatModalBinding {
@@ -193,6 +206,18 @@ const useChatPageState = (): UseChatPageStateResult => {
   const [codeViewerWidth, setCodeViewerWidth] = useState(40);
   const [renderedCodeViewerWidth, setRenderedCodeViewerWidth] = useState(0);
   const [isResizingPanels, setIsResizingPanels] = useState(false);
+  const [pendingResponses, setPendingResponses] = useState(0);
+  const isAwaitingResponse = pendingResponses > 0;
+
+  const incrementPendingResponses = useCallback(() => {
+    setPendingResponses((prev) => prev + 1);
+  }, []);
+
+  const decrementPendingResponses = useCallback(() => {
+    setPendingResponses((prev) => Math.max(0, prev - 1));
+  }, []);
+  const [isAssessingRepo, setIsAssessingRepo] = useState(false);
+  const [isAssessingFile, setIsAssessingFile] = useState(false);
 
   // Get currently selected repository
   const selectedRepo = useMemo(
@@ -513,7 +538,11 @@ const useChatPageState = (): UseChatPageStateResult => {
       const data = await response.json();
 
       if (data.status === "success") {
-        const repos: Repository[] = data.repositories.map((r: any) => ({
+        type RepositoryRecord = { repo_owner: string; repo_name: string };
+        const repoPayload = Array.isArray(data.repositories)
+          ? (data.repositories as RepositoryRecord[])
+          : [];
+        const repos: Repository[] = repoPayload.map((r) => ({
           owner: r.repo_owner,
           repo: r.repo_name,
           defaultBranch: "", // Will be loaded when selected
@@ -683,79 +712,85 @@ const useChatPageState = (): UseChatPageStateResult => {
         return;
       }
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          sender: "bot",
-          text: "🚀 Thanks! That looks like a valid GitHub repository. Starting ingestion...",
-          sourceFiles: [],
-        },
-      ]);
-
-      const treeResult = await fetchDirectoryTree(trimmedUrl);
-      if (!treeResult.success) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            sender: "bot",
-            text: `❌ Repository ingestion aborted: ${treeResult.message || "Failed to load repository tree."}`,
-            sourceFiles: [],
-          },
-        ]);
-        return;
-      }
+      incrementPendingResponses();
 
       try {
-        const backendUrl =
-          process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
-        const headers: Record<string, string> = {
-          "Content-Type": "application/json",
-        };
-        const keyToSend = debugForceEnv && process.env.NEXT_PUBLIC_OPENAI_API_KEY
-          ? process.env.NEXT_PUBLIC_OPENAI_API_KEY
-          : apiKey.trim();
-        if (keyToSend) {
-          headers["x-openai-api-key"] = keyToSend;
-        }
-        const response = await fetch(`${backendUrl}/api/ingest`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ github_url: trimmedUrl }),
-        });
-        const data = await response.json();
-
-        if (data.status === "completed") {
-          setMessages((prev) => [
-            ...prev,
-            {
-              sender: "bot",
-              text: "✅ Repository ingestion completed successfully! You can now chat about this repository.",
-              sourceFiles: [],
-            },
-          ]);
-
-          // Refresh repositories list and auto-select the new one
-          await fetchRepositories();
-          setSelectedRepoId(repoId);
-        } else {
-          setMessages((prev) => [
-            ...prev,
-            {
-              sender: "bot",
-              text: `❌ ${data.message || "Error starting ingestion"}`,
-              sourceFiles: [],
-            },
-          ]);
-        }
-      } catch {
         setMessages((prev) => [
           ...prev,
           {
             sender: "bot",
-            text: "❌ Error connecting to backend. Please try again later.",
+            text: "🚀 Thanks! That looks like a valid GitHub repository. Starting ingestion...",
             sourceFiles: [],
           },
         ]);
+
+        const treeResult = await fetchDirectoryTree(trimmedUrl);
+        if (!treeResult.success) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              sender: "bot",
+              text: `❌ Repository ingestion aborted: ${treeResult.message || "Failed to load repository tree."}`,
+              sourceFiles: [],
+            },
+          ]);
+          return;
+        }
+
+        try {
+          const backendUrl =
+            process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
+          const headers: Record<string, string> = {
+            "Content-Type": "application/json",
+          };
+          const keyToSend = debugForceEnv && process.env.NEXT_PUBLIC_OPENAI_API_KEY
+            ? process.env.NEXT_PUBLIC_OPENAI_API_KEY
+            : apiKey.trim();
+          if (keyToSend) {
+            headers["x-openai-api-key"] = keyToSend;
+          }
+          const response = await fetch(`${backendUrl}/api/ingest`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ github_url: trimmedUrl }),
+          });
+          const data = await response.json();
+
+          if (data.status === "completed") {
+            setMessages((prev) => [
+              ...prev,
+              {
+                sender: "bot",
+                text: "✅ Repository ingestion completed successfully! You can now chat about this repository.",
+                sourceFiles: [],
+              },
+            ]);
+
+            // Refresh repositories list and auto-select the new one
+            await fetchRepositories();
+            setSelectedRepoId(repoId);
+          } else {
+            setMessages((prev) => [
+              ...prev,
+              {
+                sender: "bot",
+                text: `❌ ${data.message || "Error starting ingestion"}`,
+                sourceFiles: [],
+              },
+            ]);
+          }
+        } catch {
+          setMessages((prev) => [
+            ...prev,
+            {
+              sender: "bot",
+              text: "❌ Error connecting to backend. Please try again later.",
+              sourceFiles: [],
+            },
+          ]);
+        }
+      } finally {
+        decrementPendingResponses();
       }
     } else {
       // Immediate feedback for invalid/non-repo links
@@ -904,6 +939,7 @@ const useChatPageState = (): UseChatPageStateResult => {
       { sender: "user", text: currentMessage, sourceFiles: [] },
     ]);
 
+    incrementPendingResponses();
     try {
       const backendUrl =
         process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
@@ -951,6 +987,8 @@ const useChatPageState = (): UseChatPageStateResult => {
           sourceFiles: [],
         },
       ]);
+    } finally {
+      decrementPendingResponses();
     }
   };
 
@@ -960,6 +998,254 @@ const useChatPageState = (): UseChatPageStateResult => {
     setShowAutocomplete(false);
     setShowClearChatConfirm(false);
   };
+
+  const postSecurityAssessmentMessage = useCallback(
+    (assessment: SecurityAssessment) => {
+      const severityIcons: Record<string, string> = {
+        critical: "🛑",
+        high: "⚠️",
+        medium: "🟠",
+        low: "🔹",
+        info: "ℹ️",
+      };
+      const scopeLabel = assessment.scope === "repo" ? "repository" : "file";
+      const targetLabel =
+        assessment.scope === "file" && assessment.file_path
+          ? `${assessment.owner}/${assessment.repo} — ${assessment.file_path}`
+          : `${assessment.owner}/${assessment.repo}`;
+      const heading = `🔐 Security assessment (${scopeLabel}) complete for ${targetLabel}.`;
+      const findingsText =
+        assessment.findings && assessment.findings.length > 0
+          ? assessment.findings
+              .map((finding, index) => {
+                const severity = (finding.severity || "info").toLowerCase();
+                const icon = severityIcons[severity] || "•";
+                const location =
+                  finding.file_path || assessment.file_path || "unspecified file";
+                const parts = [
+                  `${icon} **${index + 1}. ${finding.title || "Finding"} (${severity.toUpperCase()})**`,
+                  `File: ${location}${
+                    finding.line_hints ? ` (lines: ${finding.line_hints})` : ""
+                  }`,
+                  finding.description ? `Detail: ${finding.description}` : null,
+                  finding.evidence ? `Evidence: ${finding.evidence}` : null,
+                  finding.remediation ? `Remediation: ${finding.remediation}` : null,
+                  finding.category ? `Category: ${finding.category}` : null,
+                ].filter(Boolean);
+                return parts.join("\n");
+              })
+              .join("\n\n")
+          : "_No actionable risks detected in the sampled context._";
+      const messageLines = [
+        heading,
+        `Summary: ${assessment.summary}`,
+        findingsText,
+      ];
+      if (assessment.context_source === "empty") {
+        messageLines.push(
+          "_ℹ️ No indexed chunks were available. Ingest the repository to improve coverage._"
+        );
+      } else if (assessment.context_source === "file_only") {
+        messageLines.push(
+          "_ℹ️ Analysis relied solely on this file. Ingesting the repo unlocks cross-file context._"
+        );
+      }
+      const uniqueSources = Array.from(
+        new Set(
+          (assessment.findings || [])
+            .map((finding) => finding.file_path)
+            .filter((path): path is string => Boolean(path))
+        )
+      );
+      setMessages((prev) => [
+        ...prev,
+        {
+          sender: "bot",
+          text: messageLines.join("\n\n"),
+          sourceFiles: uniqueSources,
+        },
+      ]);
+    },
+    [setMessages]
+  );
+
+  const handleRepoSecurityAssessment = useCallback(async () => {
+    if (!repoDetails.owner || !repoDetails.repo) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          sender: "bot",
+          text: "⚠️ Ingest a repository before running a security assessment.",
+          sourceFiles: [],
+        },
+      ]);
+      return;
+    }
+
+    if (!effectiveHasApiKey && !debugForceEnv) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          sender: "bot",
+          text: "⚠️ Add your OpenAI API key to run security assessments.",
+          sourceFiles: [],
+        },
+      ]);
+      return;
+    }
+
+    setIsAssessingRepo(true);
+    incrementPendingResponses();
+    try {
+      const backendUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      const keyToSend =
+        debugForceEnv && process.env.NEXT_PUBLIC_OPENAI_API_KEY
+          ? process.env.NEXT_PUBLIC_OPENAI_API_KEY
+          : apiKey.trim();
+      if (keyToSend) {
+        headers["x-openai-api-key"] = keyToSend;
+      }
+
+      const response = await fetch(`${backendUrl}/api/security/assess_repo`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          owner: repoDetails.owner,
+          repo: repoDetails.repo,
+          github_url: repoUrl || undefined,
+        }),
+      });
+      const data = await response.json();
+
+      if (!response.ok || data.status !== "success" || !data.assessment) {
+        throw new Error(data.message || "Failed to complete security assessment.");
+      }
+
+      postSecurityAssessmentMessage(data.assessment as SecurityAssessment);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : String(error ?? "Unknown error");
+      setMessages((prev) => [
+        ...prev,
+        {
+          sender: "bot",
+          text: `❌ Repo security assessment failed: ${message}`,
+          sourceFiles: [],
+        },
+      ]);
+    } finally {
+      setIsAssessingRepo(false);
+      decrementPendingResponses();
+    }
+  }, [
+    repoDetails.owner,
+    repoDetails.repo,
+    repoUrl,
+    apiKey,
+    debugForceEnv,
+    effectiveHasApiKey,
+    postSecurityAssessmentMessage,
+    setMessages,
+    incrementPendingResponses,
+    decrementPendingResponses,
+  ]);
+
+  const handleFileSecurityAssessment = useCallback(
+    async (filePath: string) => {
+      if (!filePath) return;
+
+      if (!repoDetails.owner || !repoDetails.repo) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            sender: "bot",
+            text: "⚠️ Ingest a repository before running a file-level assessment.",
+            sourceFiles: [],
+          },
+        ]);
+        return;
+      }
+
+      if (!effectiveHasApiKey && !debugForceEnv) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            sender: "bot",
+            text: "⚠️ Add your OpenAI API key to run security assessments.",
+            sourceFiles: [],
+          },
+        ]);
+        return;
+      }
+
+      setIsAssessingFile(true);
+      incrementPendingResponses();
+      try {
+        const backendUrl =
+          process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
+        const keyToSend =
+          debugForceEnv && process.env.NEXT_PUBLIC_OPENAI_API_KEY
+            ? process.env.NEXT_PUBLIC_OPENAI_API_KEY
+            : apiKey.trim();
+        if (keyToSend) {
+          headers["x-openai-api-key"] = keyToSend;
+        }
+
+        const response = await fetch(`${backendUrl}/api/security/assess_file`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            owner: repoDetails.owner,
+            repo: repoDetails.repo,
+            file_path: filePath,
+            github_url: repoUrl || undefined,
+          }),
+        });
+        const data = await response.json();
+
+        if (!response.ok || data.status !== "success" || !data.assessment) {
+          throw new Error(
+            data.message || "Failed to complete file security assessment."
+          );
+        }
+
+        postSecurityAssessmentMessage(data.assessment as SecurityAssessment);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : String(error ?? "Unknown error");
+        setMessages((prev) => [
+          ...prev,
+          {
+            sender: "bot",
+            text: `❌ File security assessment failed for ${filePath}: ${message}`,
+            sourceFiles: [filePath],
+          },
+        ]);
+      } finally {
+        setIsAssessingFile(false);
+        decrementPendingResponses();
+      }
+    },
+    [
+      repoDetails.owner,
+      repoDetails.repo,
+      repoUrl,
+      apiKey,
+      debugForceEnv,
+      effectiveHasApiKey,
+      postSecurityAssessmentMessage,
+      setMessages,
+      incrementPendingResponses,
+      decrementPendingResponses,
+    ]
+  );
 
   const getCurrentStructure = useCallback((): TreeStructure => {
     if (!treeStructure) return {};
@@ -1415,6 +1701,8 @@ const useChatPageState = (): UseChatPageStateResult => {
     effectiveHasApiKey,
     onManageApiKeyClick: () => setIsApiKeyModalOpen(true),
     debugForceEnv,
+    onAssessRepoClick: handleRepoSecurityAssessment,
+    isAssessingRepo,
   }), [
     url,
     handleSubmit,
@@ -1442,6 +1730,8 @@ const useChatPageState = (): UseChatPageStateResult => {
     effectiveHasApiKey,
     setIsApiKeyModalOpen,
     debugForceEnv,
+    handleRepoSecurityAssessment,
+    isAssessingRepo,
   ]);
 
   const codeViewer: CodeViewerBinding = {
@@ -1455,6 +1745,9 @@ const useChatPageState = (): UseChatPageStateResult => {
     onDragOver: handleDragOver,
     onDrop: handleDrop,
     onDragEnd: handleDragEnd,
+    onAssessActiveFile: handleFileSecurityAssessment,
+    isAssessingFile,
+    canAssessFiles: effectiveHasApiKey || debugForceEnv,
   };
 
   const chatPanel: ChatPanelBinding = {
@@ -1476,6 +1769,7 @@ const useChatPageState = (): UseChatPageStateResult => {
     inputPlaceholder: chatInputPlaceholder,
     onManageApiKeyClick: () => setIsApiKeyModalOpen(true),
     onAtButtonClick: handleAtButtonClick,
+    isAwaitingResponse,
   };
 
   const clearChatModal: ClearChatModalBinding = {
