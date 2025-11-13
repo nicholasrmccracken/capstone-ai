@@ -16,6 +16,7 @@ export interface Tab {
   fileContent: string | null;
   fileType?: "text" | "image" | "pdf";
   contentType?: string;
+  error?: string;
 }
 
 export interface RepoDetails {
