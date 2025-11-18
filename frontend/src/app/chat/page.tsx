@@ -4,7 +4,6 @@ import CodeViewer from "./components/CodeViewer";
 import ChatPanel from "./components/ChatPanel";
 import ClearChatModal from "./components/ClearChatModal";
 import ClearRepositoriesModal from "./components/ClearRepositoriesModal";
-import ApiKeyBanner from "./components/ApiKeyBanner";
 import ApiKeyModal from "./components/ApiKeyModal";
 import DebugPanel from "./components/DebugPanel";
 import ResizeHandle from "./components/ResizeHandle";
@@ -35,37 +34,36 @@ export default function Chat() {
         <h2 className="text-4xl font-bold text-blue-400 drop-shadow-md">
           RepoRover Chat
         </h2>
-        <button
-          onClick={() => setShowSettings(true)}
-          className="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
-          title="Settings"
-        >
-          <svg
-            className="w-6 h-6 text-gray-300"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
+        <div className="relative">
+          <button
+            onClick={() => setShowSettings(true)}
+            className="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
+            title="Settings"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-            />
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-        </button>
+            <svg
+              className="w-6 h-6 text-gray-300"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+              />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+          {!apiKeyManager.hasApiKey && (
+            <div className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+              1
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Hide API key banner when using environment variable in force mode */}
-      {!apiKeyManager.debugForceEnv && (
-        <ApiKeyBanner
-          hasApiKey={apiKeyManager.hasApiKey}
-          maskedKey={apiKeyManager.maskedKey}
-          updatedAtLabel={apiKeyManager.updatedAtLabel}
-          onManageClick={apiKeyManager.onOpen}
-        />
-      )}
+
 
       <div className="flex w-full max-w-[120rem] flex-1 gap-4 overflow-hidden min-h-0">
         <div className={layout.leftContainerClassName}>
@@ -124,6 +122,12 @@ export default function Chat() {
       <SettingsModal
         isOpen={showSettings}
         onClose={() => setShowSettings(false)}
+        hasApiKey={apiKeyManager.hasApiKey}
+        maskedKey={apiKeyManager.maskedKey}
+        currentValue={apiKeyManager.currentValue}
+        updatedAtLabel={apiKeyManager.updatedAtLabel}
+        onSaveApiKey={apiKeyManager.onSave}
+        onClearApiKey={apiKeyManager.onClear}
       />
     </main>
   );
