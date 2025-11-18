@@ -73,11 +73,11 @@ export interface CodeViewerBinding {
 export interface TreePanelBinding {
   url: string;
   onUrlChange: (value: string) => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onSubmit: (e: FormEvent<HTMLFormElement>) => void;
   onClearRepositoriesClick: () => void;
   repositories: Repository[];
-  selectedRepoId: string | null;
-  onRepoSelect: (repoId: string) => void;
+  selectedRepoIds: string[];
+  onRepoToggle: (repoId: string) => void;
   onDeleteRepository: (repoId: string) => void;
   treeStructure: TreeStructure | null;
   treeError: string | null;
@@ -167,7 +167,7 @@ interface UseChatPageStateResult {
 const useChatPageState = (): UseChatPageStateResult => {
   const [url, setUrl] = useState("");
   const [repositories, setRepositories] = useState<Repository[]>([]);
-  const [selectedRepoId, setSelectedRepoId] = useState<string | null>(null);
+  const [selectedRepoIds, setSelectedRepoIds] = useState<string[]>([]);
   const [messages, setMessages] = useState<Message[]>(createInitialMessages);
   const [inputMessage, setInputMessage] = useState("");
   const [treeStructure, setTreeStructure] = useState<TreeStructure | null>(null);
@@ -219,10 +219,16 @@ const useChatPageState = (): UseChatPageStateResult => {
   const [isAssessingRepo, setIsAssessingRepo] = useState(false);
   const [isAssessingFile, setIsAssessingFile] = useState(false);
 
-  // Get currently selected repository
+  // Get currently selected repositories
+  const selectedRepos = useMemo(
+    () => repositories.filter((r) => selectedRepoIds.includes(r.displayName)),
+    [repositories, selectedRepoIds]
+  );
+
+  // Use first selected repo for tree display (the one that was previously "selected")
   const selectedRepo = useMemo(
-    () => repositories.find((r) => r.displayName === selectedRepoId) || null,
-    [repositories, selectedRepoId]
+    () => selectedRepos.length > 0 ? selectedRepos[0] : null,
+    [selectedRepos]
   );
 
   const repoUrl = selectedRepo?.url || "";
@@ -552,8 +558,8 @@ const useChatPageState = (): UseChatPageStateResult => {
         setRepositories(repos);
 
         // Auto-select first repo if none selected
-        if (repos.length > 0 && !selectedRepoId) {
-          handleRepoSelect(repos[0].displayName);
+        if (repos.length > 0 && selectedRepoIds.length === 0) {
+          handleRepoToggle(repos[0].displayName);
         }
       }
     } catch (error) {
@@ -566,15 +572,28 @@ const useChatPageState = (): UseChatPageStateResult => {
     fetchRepositories();
   }, []);
 
-  // Handle repository selection
-  const handleRepoSelect = async (repoId: string) => {
-    const repo = repositories.find((r) => r.displayName === repoId);
-    if (!repo) return;
+  // Handle repository toggle (add/remove from selection)
+  const handleRepoToggle = async (repoId: string) => {
+    const isCurrentlySelected = selectedRepoIds.includes(repoId);
+    let newSelectedIds: string[];
 
-    setSelectedRepoId(repoId);
+    if (isCurrentlySelected) {
+      // Remove from selection
+      newSelectedIds = selectedRepoIds.filter(id => id !== repoId);
+    } else {
+      // Add to selection
+      newSelectedIds = [...selectedRepoIds, repoId];
+    }
 
-    // Fetch tree for selected repository
-    await fetchDirectoryTree(repo.url);
+    setSelectedRepoIds(newSelectedIds);
+
+    // If this is the first repo being selected or we just selected one, fetch its tree
+    if (!isCurrentlySelected && newSelectedIds.length >= 1) {
+      const repo = repositories.find((r) => r.displayName === repoId);
+      if (repo) {
+        await fetchDirectoryTree(repo.url);
+      }
+    }
   };
 
   // Handle repository deletion
@@ -602,9 +621,11 @@ const useChatPageState = (): UseChatPageStateResult => {
         // Remove from list
         setRepositories((prev) => prev.filter((r) => r.displayName !== repoId));
 
-        // If deleted the selected repo, clear selection
-        if (selectedRepoId === repoId) {
-          setSelectedRepoId(null);
+        // If deleted the selected repo, remove from selection
+        setSelectedRepoIds((prev) => prev.filter(id => id !== repoId));
+
+        // If we deleted the currently displayed tree repository, clear tree if no repos left
+        if (selectedRepo && selectedRepo.displayName === repoId) {
           setTreeStructure(null);
           setTreeCurrentPath([]);
           setExpandedNodes(new Set());
@@ -768,7 +789,7 @@ const useChatPageState = (): UseChatPageStateResult => {
 
             // Refresh repositories list and auto-select the new one
             await fetchRepositories();
-            setSelectedRepoId(repoId);
+            setSelectedRepoIds([repoId]);
           } else {
             setMessages((prev) => [
               ...prev,
@@ -1714,7 +1735,7 @@ const useChatPageState = (): UseChatPageStateResult => {
         ]);
         // Clear all repository-related state
         setRepositories([]);
-        setSelectedRepoId(null);
+        setSelectedRepoIds([]);
         setTreeStructure(null);
         setUrl("");
         setTreeCurrentPath([]);
@@ -1776,8 +1797,8 @@ const useChatPageState = (): UseChatPageStateResult => {
     onSubmit: handleSubmit,
     onClearRepositoriesClick: () => setShowClearConfirm(true),
     repositories,
-    selectedRepoId,
-    onRepoSelect: handleRepoSelect,
+    selectedRepoIds,
+    onRepoToggle: handleRepoToggle,
     onDeleteRepository: handleDeleteRepository,
     treeStructure,
     treeError,
@@ -1805,8 +1826,8 @@ const useChatPageState = (): UseChatPageStateResult => {
     url,
     handleSubmit,
     repositories,
-    selectedRepoId,
-    handleRepoSelect,
+    selectedRepoIds,
+    handleRepoToggle,
     handleDeleteRepository,
     treeStructure,
     treeError,
