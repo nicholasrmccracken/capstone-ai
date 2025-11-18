@@ -10,8 +10,8 @@ interface TreePanelProps {
   onSubmit: (e: FormEvent<HTMLFormElement>) => void;
   onClearRepositoriesClick: () => void;
   repositories: Repository[];
-  selectedRepoId: string | null;
-  onRepoSelect: (repoId: string) => void;
+  selectedRepoIds: string[];
+  onRepoToggle: (repoId: string) => void;
   onDeleteRepository: (repoId: string) => void;
   treeStructure: TreeStructure | null;
   treeError: string | null;
@@ -157,8 +157,8 @@ const TreePanel = ({
   onSubmit,
   onClearRepositoriesClick,
   repositories,
-  selectedRepoId,
-  onRepoSelect,
+  selectedRepoIds,
+  onRepoToggle,
   onDeleteRepository,
   treeStructure,
   treeError,
@@ -263,37 +263,46 @@ const TreePanel = ({
       {repositories.length > 0 && (
         <div className="mb-4">
           <label className="block text-sm font-medium text-gray-300 mb-2">
-            Select Repository
+            Select Repositories (Multiple allowed)
           </label>
-          <select
-            value={selectedRepoId || ""}
-            onChange={(e) => onRepoSelect(e.target.value)}
-            className="w-full p-3 border border-gray-600 bg-gray-800 text-white rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="" disabled>
-              Choose a repository...
-            </option>
+          <div className="space-y-2 max-h-32 overflow-y-auto border border-gray-600 bg-gray-800 rounded-lg p-3">
             {repositories.map((repo) => (
-              <option key={repo.displayName} value={repo.displayName}>
-                {repo.displayName}
-              </option>
+              <label
+                key={repo.displayName}
+                className="flex items-center cursor-pointer hover:bg-gray-700/50 p-1 rounded"
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedRepoIds.includes(repo.displayName)}
+                  onChange={() => onRepoToggle(repo.displayName)}
+                  className="mr-3 h-4 w-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2"
+                />
+                <span className="text-sm text-gray-200">{repo.displayName}</span>
+              </label>
             ))}
-          </select>
+          </div>
+          {selectedRepoIds.length > 0 && (
+            <p className="text-xs text-gray-400 mt-2">
+              {selectedRepoIds.length} repository{selectedRepoIds.length !== 1 ? 'ies' : ''} selected
+            </p>
+          )}
         </div>
       )}
 
-      {repositories.length > 0 && (
+      {repositories.length > 0 && selectedRepoIds.length > 0 && (
         <div className="mb-4 flex gap-2">
-          {selectedRepoId && (
-            <button
-              type="button"
-              onClick={() => onDeleteRepository(selectedRepoId)}
-              className="flex-1 px-3 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-semibold transition-all text-xs sm:text-sm truncate"
-              title={`Delete ${selectedRepoId}`}
-            >
-              Delete {selectedRepoId}
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => {
+              const repoId = selectedRepoIds[0]; // For now, if multiple are selected, use the first one for delete buttons
+              onDeleteRepository(repoId);
+            }}
+            className="flex-1 px-3 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-semibold transition-all text-xs sm:text-sm truncate"
+            title={`Delete ${selectedRepoIds[0]}`}
+            disabled={selectedRepoIds.length > 1}
+          >
+            Delete {(selectedRepoIds.length <= 1) && selectedRepoIds[0]}
+          </button>
           <button
             type="button"
             onClick={onClearRepositoriesClick}
