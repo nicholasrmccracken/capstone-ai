@@ -203,7 +203,7 @@ const useChatPageState = (): UseChatPageStateResult => {
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
   const [debugForceEnv, setDebugForceEnv] = useState(false);
   const [debugForceUser, setDebugForceUser] = useState(false);
-  const [codeViewerWidth, setCodeViewerWidth] = useState(40);
+  const [codeViewerWidth, setCodeViewerWidth] = useState(60);
   const [renderedCodeViewerWidth, setRenderedCodeViewerWidth] = useState(0);
   const [isResizingPanels, setIsResizingPanels] = useState(false);
   const [pendingResponses, setPendingResponses] = useState(0);
@@ -236,7 +236,7 @@ const useChatPageState = (): UseChatPageStateResult => {
   const handleResize = useCallback((deltaX: number) => {
     setCodeViewerWidth((prevWidth) => {
       const newWidth = prevWidth + (deltaX / window.innerWidth) * 100;
-      return Math.max(20, Math.min(60, newWidth));
+      return Math.max(30, Math.min(70, newWidth));
     });
   }, []);
 
@@ -431,8 +431,8 @@ const useChatPageState = (): UseChatPageStateResult => {
   const chatInputPlaceholder = !repoUrl
     ? "First enter a repo URL above"
     : !(effectiveHasApiKey || debugForceEnv)
-    ? "Add your OpenAI API key to start chatting"
-    : "Ask a question about the repo or use @filename...";
+      ? "Add your OpenAI API key to start chatting"
+      : "Ask a question about the repo or use @filename...";
 
   useEffect(() => {
     if (chatMessagesRef.current) {
@@ -1017,24 +1017,23 @@ const useChatPageState = (): UseChatPageStateResult => {
       const findingsText =
         assessment.findings && assessment.findings.length > 0
           ? assessment.findings
-              .map((finding, index) => {
-                const severity = (finding.severity || "info").toLowerCase();
-                const icon = severityIcons[severity] || "•";
-                const location =
-                  finding.file_path || assessment.file_path || "unspecified file";
-                const parts = [
-                  `${icon} **${index + 1}. ${finding.title || "Finding"} (${severity.toUpperCase()})**`,
-                  `File: ${location}${
-                    finding.line_hints ? ` (lines: ${finding.line_hints})` : ""
-                  }`,
-                  finding.description ? `Detail: ${finding.description}` : null,
-                  finding.evidence ? `Evidence: ${finding.evidence}` : null,
-                  finding.remediation ? `Remediation: ${finding.remediation}` : null,
-                  finding.category ? `Category: ${finding.category}` : null,
-                ].filter(Boolean);
-                return parts.join("\n");
-              })
-              .join("\n\n")
+            .map((finding, index) => {
+              const severity = (finding.severity || "info").toLowerCase();
+              const icon = severityIcons[severity] || "•";
+              const location =
+                finding.file_path || assessment.file_path || "unspecified file";
+              const parts = [
+                `${icon} **${index + 1}. ${finding.title || "Finding"} (${severity.toUpperCase()})**`,
+                `File: ${location}${finding.line_hints ? ` (lines: ${finding.line_hints})` : ""
+                }`,
+                finding.description ? `Detail: ${finding.description}` : null,
+                finding.evidence ? `Evidence: ${finding.evidence}` : null,
+                finding.remediation ? `Remediation: ${finding.remediation}` : null,
+                finding.category ? `Category: ${finding.category}` : null,
+              ].filter(Boolean);
+              return parts.join("\n");
+            })
+            .join("\n\n")
           : "_No actionable risks detected in the sampled context._";
       const messageLines = [
         heading,
@@ -1331,11 +1330,11 @@ const useChatPageState = (): UseChatPageStateResult => {
         prevTabs.map((tab) =>
           tab.id === tabId && tab.filePath === expectedPath
             ? {
-                ...tab,
-                fileContent: data.content,
-                fileType: data.type,
-                contentType: data.content_type
-              }
+              ...tab,
+              fileContent: data.content,
+              fileType: data.type,
+              contentType: data.content_type
+            }
             : tab
         )
       );
@@ -1659,7 +1658,7 @@ const useChatPageState = (): UseChatPageStateResult => {
     codeViewerClassName,
     shouldRenderCodeViewer: isCodeViewerMounted || hasOpenTabs,
     codeViewerVisibleWidth: isResizingPanels ? codeViewerWidth : renderedCodeViewerWidth,
-    codeViewerOpacity: hasOpenTabs ? 1 : 0,
+    codeViewerOpacity: 1,
     isResizingPanels,
     hasDirectories: allDirectoryPaths.length > 0,
     isFullyExpanded,

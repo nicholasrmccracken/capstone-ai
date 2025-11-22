@@ -2,6 +2,7 @@
 import type { ChangeEvent, FormEvent, KeyboardEvent, RefObject } from "react";
 import ChatMessages from "./ChatMessages";
 import type { Message } from "../types";
+import { Send, Trash2, AtSign, Key, FileCode } from "lucide-react";
 
 interface ChatPanelProps {
   className: string;
@@ -52,18 +53,23 @@ const ChatPanel = ({
   onAtButtonClick,
   isAwaitingResponse,
 }: ChatPanelProps) => (
-  <div className={className} style={style}>
-    <div className="flex items-center justify-between mb-3">
-      <h3 className="text-lg font-semibold text-gray-200">{title}</h3>
+  <div className={`${className} bg-[#1e1e1e]/50 backdrop-blur-sm`} style={style}>
+    {/* Header */}
+    <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-[#1e1e1e]/80">
+      <h3 className="text-sm font-semibold text-gray-200 flex items-center gap-2">
+        {title}
+      </h3>
       <button
         type="button"
         onClick={onClearChatClick}
-        className="px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-gray-100 rounded-lg transition-colors border border-gray-600"
+        className="p-2 text-gray-400 hover:text-red-400 hover:bg-white/5 rounded-md transition-colors"
+        title="Clear Chat"
       >
-        Clear Chat
+        <Trash2 size={16} />
       </button>
     </div>
 
+    {/* Messages Area */}
     <ChatMessages
       messages={messages}
       chatMessagesRef={chatMessagesRef}
@@ -71,67 +77,76 @@ const ChatPanel = ({
       isAwaitingResponse={isAwaitingResponse}
     />
 
-    <div className="relative">
-      <form onSubmit={onSubmit} className="flex gap-2 mt-4">
-        <div className="relative flex-1">
-          <input
-            ref={inputRef}
-            type="text"
-            value={inputMessage}
-            onChange={onInputChange}
-            onKeyDown={onInputKeyDown}
-            placeholder={inputPlaceholder}
-            className="w-full p-3 pl-12 border border-gray-600 bg-gray-800 text-white rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            disabled={!isChatEnabled}
-          />
-          <button
-            type="button"
-            onClick={onAtButtonClick}
-            className="absolute left-3 top-1/2 transform -translate-y-1/2 w-6 h-6 bg-blue-500 hover:bg-blue-600 text-white rounded-full flex items-center justify-center font-bold text-sm transition-colors disabled:opacity-50"
-            disabled={!isChatEnabled}
-            title="Tag files"
-          >
-            @
-          </button>
-        </div>
-        <button
-          type="submit"
-          className="px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-all"
-          disabled={!isChatEnabled}
-        >
-          Send
-        </button>
-      </form>
-      {!isChatEnabled && repoUrl && (
-        <div className="mt-2 flex items-center justify-between rounded-lg border border-blue-500/30 bg-blue-900/10 px-3 py-2 text-xs text-blue-100/90">
-          <span>Paste your OpenAI API key to unlock chat.</span>
-          <button
-            type="button"
-            onClick={onManageApiKeyClick}
-            className="font-semibold text-blue-200 underline decoration-dotted underline-offset-2 hover:text-blue-50"
-          >
-            Add Key
-          </button>
-        </div>
-      )}
-      {showAutocomplete && autocompleteOptions.length > 0 && (
-        <div className="absolute bottom-full left-0 right-0 bg-gray-800 border border-gray-600 rounded-lg shadow-lg mb-1 max-h-32 overflow-y-auto z-[99999]">
-          {autocompleteOptions.map((option, index) => (
+    {/* Input Area */}
+    <div className="p-4 border-t border-white/5 bg-[#1e1e1e]/80">
+      <div className="relative">
+        <form onSubmit={onSubmit} className="flex gap-2">
+          <div className="relative flex-1 group">
+            <input
+              ref={inputRef}
+              type="text"
+              value={inputMessage}
+              onChange={onInputChange}
+              onKeyDown={onInputKeyDown}
+              placeholder={inputPlaceholder}
+              className="w-full p-3 pl-10 bg-black/20 border border-white/10 text-white rounded-xl shadow-inner focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all placeholder-gray-500"
+              disabled={!isChatEnabled}
+            />
             <button
               type="button"
-              key={option}
-              className={`w-full text-left p-2 cursor-pointer border-l-2 ${
-                index === autocompleteIndex
-                  ? "bg-blue-600 text-white border-blue-400"
-                  : "text-gray-300 hover:bg-gray-700 border-transparent"
-              }`}
-              onClick={() => onAutocompleteSelect(option)}
+              onClick={onAtButtonClick}
+              className="absolute left-2 top-1/2 transform -translate-y-1/2 w-7 h-7 text-gray-400 hover:text-blue-400 hover:bg-white/5 rounded-md flex items-center justify-center transition-colors disabled:opacity-50"
+              disabled={!isChatEnabled}
+              title="Tag files (@)"
             >
-              <span className="font-mono text-sm">{option}</span>
+              <AtSign size={16} />
             </button>
-          ))}
-        </div>
-      )}
+          </div>
+          <button
+            type="submit"
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-medium transition-all shadow-lg shadow-blue-500/20 disabled:opacity-50 disabled:shadow-none flex items-center gap-2"
+            disabled={!isChatEnabled}
+          >
+            <Send size={18} />
+            <span className="hidden sm:inline">Send</span>
+          </button>
+        </form>
+
+        {!isChatEnabled && repoUrl && (
+          <div className="mt-3 flex items-center justify-between rounded-lg border border-blue-500/20 bg-blue-500/10 px-3 py-2 text-xs text-blue-200">
+            <div className="flex items-center gap-2">
+              <Key size={14} />
+              <span>Paste your OpenAI API key to unlock chat.</span>
+            </div>
+            <button
+              type="button"
+              onClick={onManageApiKeyClick}
+              className="font-semibold text-blue-300 hover:text-white underline decoration-dotted underline-offset-2 transition-colors"
+            >
+              Add Key
+            </button>
+          </div>
+        )}
+
+        {showAutocomplete && autocompleteOptions.length > 0 && (
+          <div className="absolute bottom-full left-0 right-0 bg-[#1e1e1e] border border-white/10 rounded-lg shadow-xl mb-2 max-h-48 overflow-y-auto z-[99999] backdrop-blur-xl">
+            {autocompleteOptions.map((option, index) => (
+              <button
+                type="button"
+                key={option}
+                className={`w-full text-left px-3 py-2 cursor-pointer flex items-center gap-2 transition-colors ${index === autocompleteIndex
+                  ? "bg-blue-600/20 text-blue-300"
+                  : "text-gray-300 hover:bg-white/5"
+                  }`}
+                onClick={() => onAutocompleteSelect(option)}
+              >
+                <FileCode size={14} className="opacity-50" />
+                <span className="font-mono text-sm truncate">{option}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   </div>
 );

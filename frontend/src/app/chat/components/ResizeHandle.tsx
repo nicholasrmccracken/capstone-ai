@@ -6,9 +6,10 @@ interface ResizeHandleProps {
   onResize: (deltaX: number) => void;
   onResizeStart?: () => void;
   onResizeEnd?: () => void;
+  isResizing?: boolean;
 }
 
-const ResizeHandle = ({ onResize, onResizeStart, onResizeEnd }: ResizeHandleProps) => {
+const ResizeHandle = ({ onResize, onResizeStart, onResizeEnd, isResizing }: ResizeHandleProps) => {
   const [isDragging, setIsDragging] = useState(false);
   const startXRef = useRef(0);
   const rafRef = useRef<number | null>(null);
@@ -85,9 +86,8 @@ const ResizeHandle = ({ onResize, onResizeStart, onResizeEnd }: ResizeHandleProp
   return (
     <div className="flex items-center justify-center flex-shrink-0" style={{ width: '4px' }}>
       <div
-        className={`w-1 h-48 rounded-full flex-shrink-0 cursor-col-resize hover:bg-blue-400 transition-colors ${
-          isDragging ? "bg-blue-400" : "bg-gray-400"
-        }`}
+        className={`w-1 h-48 rounded-full flex-shrink-0 cursor-col-resize hover:bg-blue-400 transition-colors ${isDragging || isResizing ? "bg-blue-400" : "bg-gray-400"
+          }`}
         onMouseDown={handleMouseDown}
       />
     </div>
