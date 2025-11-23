@@ -1,42 +1,38 @@
 "use client";
 import { useState } from "react";
+import { Bug } from "lucide-react";
 
 interface DebugPanelProps {
   debugForceEnv: boolean;
   debugForceUser: boolean;
   onToggleDebugForceEnv: () => void;
   onToggleDebugForceUser: () => void;
+  className?: string;
 }
-
-const GearIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-  </svg>
-);
 
 const DebugPanel = ({
   debugForceEnv,
   debugForceUser,
   onToggleDebugForceEnv,
   onToggleDebugForceUser,
+  className = "",
 }: DebugPanelProps) => {
   const [isVisible, setIsVisible] = useState(false);
 
   return (
-    <div className="fixed top-4 right-4 z-[100000] flex flex-col items-end">
+    <div className={`relative ${className}`}>
       {/* Toggle Button */}
       <button
         onClick={() => setIsVisible(!isVisible)}
-        className="rounded-lg bg-slate-700/90 p-2.5 text-slate-200 shadow-lg transition-all hover:bg-slate-600 border border-slate-600 hover:border-slate-500"
-        title="Debug Settings"
+        className="p-2 rounded-full bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-colors border border-white/5 hover:border-white/10"
+        title="Debug Controls"
       >
-        <GearIcon className="w-5 h-5" />
+        <Bug size={20} />
       </button>
 
       {/* Panel */}
       {isVisible && (
-        <div className="mt-2 w-80 rounded-xl border border-gray-700 bg-gray-900 p-4 shadow-2xl">
+        <div className="absolute top-full right-0 mt-2 w-80 rounded-xl border border-gray-700 bg-gray-900 p-4 shadow-2xl z-50">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-lg font-semibold text-white">Debug Controls</h3>
             <button

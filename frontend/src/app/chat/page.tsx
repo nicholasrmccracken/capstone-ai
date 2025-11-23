@@ -54,6 +54,14 @@ export default function Chat() {
             />
           )}
 
+          {/* Debug Controls */}
+          <DebugPanel
+            debugForceEnv={apiKeyManager.debugForceEnv}
+            debugForceUser={apiKeyManager.debugForceUser}
+            onToggleDebugForceEnv={apiKeyManager.onToggleDebugForceEnv}
+            onToggleDebugForceUser={apiKeyManager.onToggleDebugForceUser}
+          />
+
           <button
             onClick={apiKeyManager.onOpen}
             className="p-2 rounded-full bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-colors border border-white/5 hover:border-white/10"
@@ -133,14 +141,6 @@ export default function Chat() {
       {/* Restore other modals that might be triggered */}
       <ClearChatModal {...clearChatModal} />
       <ClearRepositoriesModal {...clearRepositoriesModal} />
-
-      {/* Debug Panel */}
-      <DebugPanel
-        debugForceEnv={apiKeyManager.debugForceEnv}
-        debugForceUser={apiKeyManager.debugForceUser}
-        onToggleDebugForceEnv={apiKeyManager.onToggleDebugForceEnv}
-        onToggleDebugForceUser={apiKeyManager.onToggleDebugForceUser}
-      />
     </main>
   );
 }
