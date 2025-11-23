@@ -418,7 +418,7 @@ const useChatPageState = (): UseChatPageStateResult => {
     ? `${chatPanelClassNameBase} ${panelTransition}`
     : chatPanelClassNameBase;
 
-  const codeViewerClassNameBase = "flex flex-col overflow-hidden flex-shrink-0 min-h-0";
+  const codeViewerClassNameBase = "bg-gray-900/70 border border-gray-700 rounded-xl shadow-lg overflow-hidden flex flex-col flex-shrink-0 min-h-0";
   const codeViewerClassName = panelTransition
     ? `${codeViewerClassNameBase} ${panelTransition}`
     : codeViewerClassNameBase;

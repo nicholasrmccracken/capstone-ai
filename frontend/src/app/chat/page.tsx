@@ -86,7 +86,7 @@ export default function Chat() {
         </div>
 
         {/* Right Panel (Code Viewer & Chat) - Takes remaining space */}
-        <div className="flex flex-row gap-0 min-w-0 min-h-0 flex-1">
+        <div className="flex flex-row gap-1.5 min-w-0 min-h-0 flex-1">
           {layout.shouldRenderCodeViewer && (
             <>
               <div

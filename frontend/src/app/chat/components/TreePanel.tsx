@@ -2,7 +2,7 @@
 import { memo, useMemo } from "react";
 import type { FormEvent, MouseEvent, RefObject } from "react";
 import type { TreeStructure, RepoDetails, Repository } from "../types";
-import { Folder, FolderOpen, FileText, ChevronRight, ChevronDown, Trash2, RefreshCw, Key, Search } from "lucide-react";
+import { Folder, FolderOpen, FileText, ChevronRight, ChevronDown, Trash2, RefreshCw, Key, Search, ShieldAlert } from "lucide-react";
 
 interface TreePanelProps {
   className: string;
@@ -34,6 +34,8 @@ interface TreePanelProps {
   effectiveHasApiKey: boolean;
   onManageApiKeyClick: () => void;
   debugForceEnv: boolean;
+  onAssessRepoClick: () => void;
+  isAssessingRepo: boolean;
 }
 
 // Icon components
@@ -164,7 +166,8 @@ const TreePanel = ({
   effectiveHasApiKey,
   onManageApiKeyClick,
   debugForceEnv,
-
+  onAssessRepoClick,
+  isAssessingRepo,
 }: TreePanelProps) => {
   const rootName =
     treeCurrentPath.length === 0
@@ -261,15 +264,36 @@ const TreePanel = ({
 
           <div className="flex gap-2">
             {selectedRepoId && (
-              <button
-                type="button"
-                onClick={() => onDeleteRepository(selectedRepoId)}
-                className="flex-1 py-1.5 px-2 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 rounded-md text-xs font-medium transition-colors flex items-center justify-center gap-1"
-                title={`Delete ${selectedRepoId}`}
-              >
-                <Trash2 size={12} />
-                Delete
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={onAssessRepoClick}
+                  className="flex-1 py-1.5 px-2 bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 rounded-md text-xs font-medium transition-colors flex items-center justify-center gap-1 disabled:bg-gray-800/30 disabled:text-gray-500 disabled:border-gray-700/30 disabled:cursor-not-allowed"
+                  disabled={
+                    isAssessingRepo ||
+                    !effectiveHasApiKey ||
+                    !repoDetails.owner ||
+                    !repoDetails.repo
+                  }
+                  title={isAssessingRepo ? "Assessing security..." : "Scan Repository Security"}
+                >
+                  {isAssessingRepo ? (
+                    <div className="w-3 h-3 border-2 border-blue-400/30 border-t-blue-400 rounded-full animate-spin" />
+                  ) : (
+                    <ShieldAlert size={12} />
+                  )}
+                  Scan
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDeleteRepository(selectedRepoId)}
+                  className="flex-1 py-1.5 px-2 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 rounded-md text-xs font-medium transition-colors flex items-center justify-center gap-1"
+                  title={`Delete ${selectedRepoId}`}
+                >
+                  <Trash2 size={12} />
+                  Delete
+                </button>
+              </>
             )}
             <button
               type="button"
