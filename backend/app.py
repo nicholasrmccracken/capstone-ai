@@ -67,6 +67,12 @@ def ingest():
         return jsonify({"status": "error", "message": "No URL provided"}), 400
 
     api_key = resolve_openai_api_key(payload)
+    
+    # Mock ingestion if no key provided
+    if not api_key:
+        print("Warning: OPENAI_API_KEY not set. Mocking ingestion.")
+        return jsonify({"status": "completed"})
+
     if not api_key:
         return jsonify({"status": "error", "message": "OpenAI API key not provided."}), 400
 
@@ -99,8 +105,40 @@ def get_tree():
         return jsonify({"status": "error", "message": "No URL provided"}), 400
 
     github_token = os.getenv("GITHUB_TOKEN")
+    
+    # Mock response if no token is present (for testing purposes)
     if not github_token:
-        return jsonify({"status": "error", "message": "GitHub token not configured on server."}), 500
+        print("Warning: GITHUB_TOKEN not set. Returning mock tree for testing.")
+        owner, repo_name = "mock-owner", "mock-repo"
+        if github_url:
+            try:
+                parts = github_url.strip("/").split("/")
+                if len(parts) >= 2:
+                    owner, repo_name = parts[-2:]
+            except:
+                pass
+                
+        mock_structure = {
+            "src": {
+                "app.py": "__FILE__",
+                "utils.py": "__FILE__",
+                "components": {
+                    "Header.tsx": "__FILE__",
+                    "Footer.tsx": "__FILE__"
+                }
+            },
+            "README.md": "__FILE__",
+            "requirements.txt": "__FILE__"
+        }
+        
+        return jsonify({
+            "status": "success",
+            "tree_structure": mock_structure,
+            "owner": owner,
+            "repo": repo_name,
+            "default_branch": "main",
+            "is_mock": True
+        })
 
     try:
         owner, repo_name = github_url.strip("/").split("/")[-2:]
@@ -148,6 +186,15 @@ def get_file_content():
         return jsonify({"status": "error", "message": "Missing parameters"}), 400
 
     github_token = os.getenv("GITHUB_TOKEN")
+    
+    # Mock content if no token is present
+    if not github_token:
+        return jsonify({
+            "status": "success",
+            "type": "text",
+            "content": f"# Mock content for {path}\n\nThis is a mock file content because GITHUB_TOKEN is not set.\n\ndef hello():\n    print('Hello from mock!')"
+        })
+
     if not github_token:
         return jsonify({"status": "error", "message": "GitHub token not configured."}), 500
 
@@ -396,6 +443,17 @@ def test_url():
 @app.route("/api/repositories", methods=["GET"])
 def list_repositories():
     """List all ingested repositories from Elasticsearch."""
+    
+    # Mock repositories if no GitHub token (mock mode)
+    if not os.getenv("GITHUB_TOKEN"):
+        return jsonify({
+            "status": "success",
+            "repositories": [{
+                "repo_owner": "mock-owner",
+                "repo_name": "mock-repo"
+            }]
+        })
+
     try:
         repositories = get_all_repositories()
         return jsonify({
@@ -403,6 +461,16 @@ def list_repositories():
             "repositories": repositories
         })
     except Exception as e:
+        # In mock mode we might not have ES set up either
+        if not os.getenv("GITHUB_TOKEN"):
+             return jsonify({
+                "status": "success",
+                "repositories": [{
+                    "repo_owner": "mock-owner",
+                    "repo_name": "mock-repo"
+                }]
+            })
+            
         return jsonify({"status": "error", "message": f"Failed to fetch repositories: {str(e)}"}), 500
 
 
@@ -478,6 +546,16 @@ def chat():
         return jsonify({"status": "error", "message": "No question provided"}), 400
 
     api_key = resolve_openai_api_key(payload)
+    
+    # Mock chat response if no key provided
+    if not api_key:
+        return jsonify({
+            "status": "success",
+            "answer": f"I'm in mock mode because no OpenAI API key was provided. You asked: '{question}'. \n\nI can pretend to analyze the code, but I'm just a placeholder response. Try adding a real API key to see my full capabilities!",
+            "chunks_used": 0,
+            "repos": ["mock-owner/mock-repo"]
+        })
+
     if not api_key:
         return jsonify({"status": "error", "message": "OpenAI API key not provided."}), 400
 
