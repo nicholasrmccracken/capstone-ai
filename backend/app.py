@@ -201,7 +201,27 @@ def get_file_content():
     try:
         g = Github(auth=Auth.Token(github_token))
         repo_obj = g.get_repo(f"{owner}/{repo}")
+
+        print(f"[FILE FETCH] Requesting: {path}")
         file = repo_obj.get_contents(path, ref=branch)
+        print(f"[FILE FETCH] File size: {file.size} bytes")
+
+        # For large files (>1MB), PyGithub returns empty string or None for content
+        # We need to fetch via blob API in that case
+        file_content = file.content
+        print(f"[DEBUG] file.content type: {type(file_content)}, is None: {file_content is None}, is empty: {file_content == ''}, has sha: {hasattr(file, 'sha')}")
+
+        # Check if content is missing (None or empty string) and we have a SHA to fetch from
+        if (not file_content or file_content == '') and hasattr(file, 'sha'):
+            # Fetch the blob directly for large files
+            print(f"[BLOB API] Content is missing (None or empty), fetching via blob API (SHA: {file.sha})")
+            blob = repo_obj.get_git_blob(file.sha)
+            file_content = blob.content
+            print(f"[BLOB API] ✓ Successfully fetched {len(file_content)} chars of base64 content")
+        elif file_content:
+            print(f"[FILE FETCH] ✓ Content retrieved directly (standard API) - length: {len(file_content)}")
+        else:
+            print(f"[WARNING] file_content is falsy: {repr(file_content)}")
 
         # Detect file type based on extension
         path_lower = path.lower()
@@ -224,41 +244,57 @@ def get_file_content():
             ext = next((e for e in IMAGE_EXTENSIONS if path_lower.endswith(e)), '.png')
             content_type = content_type_map.get(ext, 'image/png')
 
-            return jsonify({
+            # Validate content before sending
+            if file_content is None or file_content == "":
+                print(f"[ERROR] file_content is None or empty for image!")
+                return jsonify({"status": "error", "message": "File content is unavailable"}), 500
+
+            content_length = len(file_content) if file_content else 0
+            print(f"[RESPONSE] Returning IMAGE ({content_type}) - content length: {content_length} chars")
+
+            response_data = {
                 "status": "success",
                 "type": "image",
-                "content": file.content,  # Already base64 from PyGithub
+                "content": file_content,  # Base64 content
                 "content_type": content_type,
                 "filename": path.split('/')[-1]
-            })
+            }
+            print(f"[DEBUG] Response keys: {list(response_data.keys())}, content is None: {response_data['content'] is None}")
+            return jsonify(response_data)
 
         # Check if file is a PDF
         elif path_lower.endswith('.pdf'):
+            print(f"[RESPONSE] Returning PDF")
             return jsonify({
                 "status": "success",
                 "type": "pdf",
-                "content": file.content,  # Already base64 from PyGithub
+                "content": file_content,  # Base64 content
+                "content_type": "application/pdf",
                 "filename": path.split('/')[-1]
             })
 
         # Text files - decode as UTF-8
         else:
             try:
-                content = base64.b64decode(file.content).decode("utf-8")
+                content = base64.b64decode(file_content).decode("utf-8")
+                print(f"[RESPONSE] Returning TEXT ({len(content)} chars)")
                 return jsonify({
                     "status": "success",
                     "type": "text",
                     "content": content
                 })
             except UnicodeDecodeError:
+                print(f"[ERROR] UnicodeDecodeError - file is binary")
                 return jsonify({
                     "status": "error",
                     "message": "File is binary and cannot be displayed as text. Supported formats: images (PNG, JPG, GIF, etc.), PDFs, and text files."
                 }), 400
 
     except UnknownObjectException:
+        print(f"[ERROR] File not found: {path}")
         return jsonify({"status": "error", "message": "File not found."}), 404
     except Exception as e:
+        print(f"[ERROR] Exception during file fetch: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 

@@ -38,6 +38,32 @@ interface TreePanelProps {
   isAssessingRepo: boolean;
 }
 
+// Icon components
+const ShieldIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+  </svg>
+);
+
+const TrashIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+  </svg>
+);
+
+const ClearIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+  </svg>
+);
+
+const LoadingSpinner = ({ className = "w-5 h-5" }: { className?: string }) => (
+  <svg className={`${className} animate-spin`} fill="none" viewBox="0 0 24 24">
+    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+  </svg>
+);
+
 interface TreeNodeProps {
   structure: TreeStructure;
   parentPath: string[];
@@ -220,37 +246,101 @@ const TreePanel = ({
           </button>
         </form>
 
-        {/* Actions */}
+      <form onSubmit={onSubmit} className="flex gap-2 mb-4">
+        <input
+          type="text"
+          value={url}
+          onChange={(event) => onUrlChange(event.target.value)}
+          placeholder="Enter a GitHub repository URL"
+          className="flex-1 p-2 border border-gray-600 bg-gray-800 text-white rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
         <button
-          type="button"
-          onClick={onAssessRepoClick}
-          className="w-full py-2 px-3 rounded-lg font-medium text-sm transition-all bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-500/30 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          disabled={
-            isAssessingRepo ||
-            !effectiveHasApiKey ||
-            !repoDetails.owner ||
-            !repoDetails.repo
-          }
+          type="submit"
+          className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+            effectiveHasApiKey || debugForceEnv
+              ? "bg-blue-600 text-white hover:bg-blue-700"
+              : "cursor-not-allowed bg-blue-600/40 text-blue-100/70"
+          }`}
+          disabled={!effectiveHasApiKey && !debugForceEnv}
         >
-          <ShieldAlert size={14} />
-          {isAssessingRepo ? "Assessing..." : "Assess Security"}
+          Ingest
         </button>
+      </form>
+      {!isApiKeySet && !debugForceEnv && (
+        <p className="mb-4 text-xs text-blue-100/80">
+          Need a key?{" "}
+          <button
+            type="button"
+            onClick={onManageApiKeyClick}
+            className="underline decoration-dotted underline-offset-2 hover:text-blue-200"
+          >
+            Paste your OpenAI API key
+          </button>{" "}
+          to unlock ingest and chat.
+        </p>
+      )}
 
-        {/* Repo Selection */}
-        {repositories.length > 0 && (
-          <div className="space-y-2 pt-2 border-t border-white/5">
-            <select
-              value={selectedRepoId || ""}
-              onChange={(e) => onRepoSelect(e.target.value)}
-              className="w-full p-2 bg-black/20 border border-white/10 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+      {repositories.length > 0 && (
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-300 mb-2">
+            Select Repository
+          </label>
+          <select
+            value={selectedRepoId || ""}
+            onChange={(e) => onRepoSelect(e.target.value)}
+            className="w-full p-2 border border-gray-600 bg-gray-800 text-white rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="" disabled>
+              Choose a repository...
+            </option>
+            {repositories.map((repo) => (
+              <option key={repo.displayName} value={repo.displayName}>
+                {repo.displayName}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {repositories.length > 0 && (
+        <div className="mb-4 flex gap-2">
+          <button
+            type="button"
+            onClick={onAssessRepoClick}
+            className="flex-1 px-2 py-1.5 rounded-lg transition-all bg-slate-700 text-slate-100 hover:bg-slate-600 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 border border-slate-600 hover:border-slate-500 disabled:border-slate-700"
+            disabled={
+              isAssessingRepo ||
+              !effectiveHasApiKey ||
+              !repoDetails.owner ||
+              !repoDetails.repo
+            }
+            title={isAssessingRepo ? "Assessing security..." : "Assess Repo Security"}
+          >
+            {isAssessingRepo ? <LoadingSpinner className="w-3.5 h-3.5 flex-shrink-0" /> : <ShieldIcon className="w-3.5 h-3.5 flex-shrink-0" />}
+            <span className="text-xs font-medium">Scan</span>
+          </button>
+          {selectedRepoId && (
+            <button
+              type="button"
+              onClick={() => onDeleteRepository(selectedRepoId)}
+              className="flex-1 px-2 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-100 rounded-lg transition-all flex items-center justify-center gap-1.5 border border-slate-600 hover:border-slate-500"
+              title={`Delete ${selectedRepoId}`}
             >
-              <option value="" disabled>Select Repository...</option>
-              {repositories.map((repo) => (
-                <option key={repo.displayName} value={repo.displayName}>
-                  {repo.displayName}
-                </option>
-              ))}
-            </select>
+              <TrashIcon className="w-3.5 h-3.5 flex-shrink-0" />
+              <span className="text-xs font-medium truncate">{selectedRepoId}</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onClearRepositoriesClick}
+            className="flex-1 px-2 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-100 rounded-lg transition-all flex items-center justify-center gap-1.5 border border-slate-600 hover:border-slate-500"
+            title="Clear all repositories from Elasticsearch"
+          >
+            <ClearIcon className="w-3.5 h-3.5 flex-shrink-0" />
+            <span className="text-xs font-medium whitespace-nowrap">Clear All</span>
+          </button>
+        </div>
+      )}
 
             <div className="flex gap-2">
               {selectedRepoId && (

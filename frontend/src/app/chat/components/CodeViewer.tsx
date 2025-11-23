@@ -59,6 +59,19 @@ const renderFileContent = (tab: Tab | undefined) => {
     );
   }
 
+  // Display error state if present
+  if (tab.error) {
+    return (
+      <div className="flex items-center justify-center h-full p-4">
+        <div className="text-center">
+          <p className="text-red-400 text-lg mb-2">⚠️ Failed to load file</p>
+          <p className="text-gray-400 text-sm">{tab.error}</p>
+          <p className="text-gray-500 text-xs mt-2">File: {tab.filePath}</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!tab.fileContent) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-gray-500">
@@ -70,14 +83,46 @@ const renderFileContent = (tab: Tab | undefined) => {
 
   // Handle images
   if (tab.fileType === "image") {
+    // Validate required fields for image rendering
+    if (!tab.contentType) {
+      return (
+        <div className="flex items-center justify-center h-full p-4">
+          <p className="text-red-400">Error: Missing content type for image</p>
+        </div>
+      );
+    }
+
+    // Create a unique key based on filepath and content length to force remount
+    const imageKey = `${tab.filePath}-${tab.fileContent?.length || 0}`;
+
     return (
-      <div className="flex items-center justify-center h-full bg-black/20 p-4">
-        <div className="max-w-full max-h-full overflow-auto rounded-lg shadow-lg">
+      <div className="flex items-center justify-center h-full bg-gray-900 p-4" key={imageKey}>
+        <div className="max-w-full max-h-full overflow-auto">
           <img
+            key={imageKey}
             src={`data:${tab.contentType};base64,${tab.fileContent}`}
             alt={tab.name}
             className="max-w-full h-auto"
             style={{ maxHeight: '80vh' }}
+            onError={(e) => {
+              console.error('Image failed to load:', tab.filePath);
+              console.error('Content type:', tab.contentType);
+              console.error('Content length:', tab.fileContent?.length);
+              const target = e.currentTarget;
+              target.style.display = 'none';
+              const parent = target.parentElement;
+              if (parent) {
+                // Clear any existing error messages first
+                const existingError = parent.querySelector('.image-error-message');
+                if (existingError) {
+                  existingError.remove();
+                }
+                const errorMsg = document.createElement('p');
+                errorMsg.className = 'text-red-400 text-center image-error-message';
+                errorMsg.textContent = 'Failed to load image. The file may be corrupted or in an unsupported format.';
+                parent.appendChild(errorMsg);
+              }
+            }}
           />
           <p className="text-center text-gray-400 mt-2 text-sm">{tab.name}</p>
         </div>
@@ -87,13 +132,63 @@ const renderFileContent = (tab: Tab | undefined) => {
 
   // Handle PDFs
   if (tab.fileType === "pdf") {
+    const pdfKey = `${tab.filePath}-${tab.fileContent?.length || 0}`;
+    const pdfSizeMB = tab.fileContent ? (tab.fileContent.length * 0.75 / 1024 / 1024).toFixed(2) : '0';
+
+    console.log(`[PDF] Rendering PDF: ${tab.filePath}`);
+    console.log(`[PDF] Content length: ${tab.fileContent?.length || 0} chars`);
+    console.log(`[PDF] Estimated size: ${pdfSizeMB} MB`);
+
+    const handleDownloadPDF = () => {
+      if (!tab.fileContent) return;
+
+      // Create a blob from base64
+      const byteCharacters = atob(tab.fileContent);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: 'application/pdf' });
+
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = tab.name;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    };
+
     return (
-      <div className="h-full w-full bg-gray-900">
+      <div className="h-full w-full bg-gray-900 relative flex flex-col" key={pdfKey}>
+        <div className="p-2 bg-gray-800 text-gray-400 text-xs flex items-center justify-between">
+          <span>PDF: {tab.name} (≈{pdfSizeMB} MB)</span>
+          <button
+            onClick={handleDownloadPDF}
+            className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded"
+          >
+            Download PDF
+          </button>
+        </div>
         <iframe
+          key={pdfKey}
           src={`data:application/pdf;base64,${tab.fileContent}`}
-          className="w-full h-full border-none"
+          className="w-full flex-1"
           title={tab.name}
+          style={{ minHeight: '600px', border: 'none' }}
+          onLoad={() => {
+            console.log(`[PDF] Successfully loaded: ${tab.filePath}`);
+          }}
+          onError={() => {
+            console.error('[PDF] Failed to load iframe:', tab.filePath);
+          }}
         />
+        <div className="p-4 bg-gray-800 text-center text-gray-400 text-sm">
+          If the PDF doesn't display above, click "Download PDF" to view it locally.
+        </div>
       </div>
     );
   }

@@ -1311,41 +1311,130 @@ const useChatPageState = (): UseChatPageStateResult => {
       });
 
       if (!response.ok) {
-        if (response.status === 404) {
-          setMessages((prev) => [
-            ...prev,
-            {
-              sender: "bot",
-              text: `❌ File "${expectedPath}" not found in current repository. It may be from a different repository or the path may have changed.`,
-              sourceFiles: [],
-            },
-          ]);
-          return;
-        }
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const errorMessage = response.status === 404
+          ? `File not found. It may be from a different repository or the path may have changed.`
+          : `HTTP ${response.status}: ${response.statusText}`;
+
+        // Update tab with error state
+        setTabs((prevTabs) =>
+          prevTabs.map((tab) =>
+            tab.id === tabId && tab.filePath === expectedPath
+              ? {
+                  ...tab,
+                  fileContent: null,
+                  error: errorMessage,
+                }
+              : tab
+          )
+        );
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            sender: "bot",
+            text: `❌ Failed to load "${expectedPath}": ${errorMessage}`,
+            sourceFiles: [],
+          },
+        ]);
+        return;
       }
 
       const data = await response.json();
+
+      console.log('[FRONTEND] Received response for', expectedPath);
+      console.log('[FRONTEND] Response keys:', Object.keys(data));
+      console.log('[FRONTEND] data.content is null/undefined:', data.content == null);
+      console.log('[FRONTEND] data.type:', data.type);
+      console.log('[FRONTEND] data.content_type:', data.content_type);
+      if (data.content) {
+        console.log('[FRONTEND] data.content length:', data.content.length);
+      }
+
+      // Validate response data before updating tab
+      if (data.content == null) {
+        const errorMessage = "File content is empty or missing. The file may be too large or unavailable.";
+        setTabs((prevTabs) =>
+          prevTabs.map((tab) =>
+            tab.id === tabId && tab.filePath === expectedPath
+              ? {
+                  ...tab,
+                  fileContent: null,
+                  error: errorMessage,
+                }
+              : tab
+          )
+        );
+        setMessages((prev) => [
+          ...prev,
+          {
+            sender: "bot",
+            text: `❌ Failed to load "${expectedPath}": ${errorMessage}`,
+            sourceFiles: [],
+          },
+        ]);
+        return;
+      }
+
+      if (!data.type) {
+        const errorMessage = "Invalid response: missing file type";
+        setTabs((prevTabs) =>
+          prevTabs.map((tab) =>
+            tab.id === tabId && tab.filePath === expectedPath
+              ? {
+                  ...tab,
+                  fileContent: null,
+                  error: errorMessage,
+                }
+              : tab
+          )
+        );
+        setMessages((prev) => [
+          ...prev,
+          {
+            sender: "bot",
+            text: `❌ Failed to load "${expectedPath}": ${errorMessage}`,
+            sourceFiles: [],
+          },
+        ]);
+        return;
+      }
+
+      // Update tab with successful content
       setTabs((prevTabs) =>
         prevTabs.map((tab) =>
           tab.id === tabId && tab.filePath === expectedPath
             ? {
-              ...tab,
-              fileContent: data.content,
-              fileType: data.type,
-              contentType: data.content_type
-            }
+                ...tab,
+                fileContent: data.content,
+                fileType: data.type,
+                contentType: data.content_type,
+                error: undefined, // Clear any previous errors
+              }
             : tab
         )
       );
     } catch (error) {
       const message =
         error instanceof Error ? error.message : String(error ?? "Unknown error");
+
+      // Update tab with error state
+      setTabs((prevTabs) =>
+        prevTabs.map((tab) =>
+          tab.id === tabId && tab.filePath === expectedPath
+            ? {
+                ...tab,
+                fileContent: null,
+                error: message,
+              }
+            : tab
+        )
+      );
+
       setMessages((prev) => [
         ...prev,
         {
           sender: "bot",
-          text: `❌ Failed to fetch file content for "${expectedPath}": ${message}. This file may not exist in the current repository.`,
+          text: `❌ Failed to fetch file content for "${expectedPath}": ${message}`,
           sourceFiles: [],
         },
       ]);
@@ -1385,7 +1474,16 @@ const useChatPageState = (): UseChatPageStateResult => {
     setTabs((prev) =>
       prev.map((t) =>
         t.id === tabId
-          ? { ...t, name, color, filePath, fileContent: "Loading..." }
+          ? {
+              ...t,
+              name,
+              color,
+              filePath,
+              fileContent: "Loading...",
+              fileType: undefined,
+              contentType: undefined,
+              error: undefined
+            }
           : t
       )
     );
