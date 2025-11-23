@@ -246,7 +246,7 @@ const TreePanel = ({
             <select
               value={selectedRepoId || ""}
               onChange={(e) => onRepoSelect(e.target.value)}
-              className="w-full p-2 border border-gray-600 bg-gray-800 text-white rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2.5 border border-white/10 bg-black/20 backdrop-blur-sm text-white rounded-xl focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all cursor-pointer hover:bg-black/30 [&>option]:bg-[#1e293b] [&>option]:text-white [&>option]:py-2 [&>option:checked]:bg-blue-600 [&>option:hover]:bg-blue-500/20"
             >
               <option value="" disabled>
                 Choose a repository...
