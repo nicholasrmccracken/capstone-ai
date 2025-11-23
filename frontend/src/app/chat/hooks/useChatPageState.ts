@@ -427,7 +427,7 @@ const useChatPageState = (): UseChatPageStateResult => {
   // In debug mode, allow functionality even if env var not set for testing
   const effectiveHasApiKey = hasApiKey || debugForceEnv;
 
-  const isChatEnabled = Boolean(repoUrl && (effectiveHasApiKey || debugForceEnv));
+  const isChatEnabled = Boolean((repoUrl || selectedRepoId) && (effectiveHasApiKey || debugForceEnv));
   const chatInputPlaceholder = !repoUrl
     ? "First enter a repo URL above"
     : !(effectiveHasApiKey || debugForceEnv)
@@ -572,6 +572,7 @@ const useChatPageState = (): UseChatPageStateResult => {
     if (!repo) return;
 
     setSelectedRepoId(repoId);
+    setUrl(repo.url);
 
     // Fetch tree for selected repository
     await fetchDirectoryTree(repo.url);
@@ -766,9 +767,26 @@ const useChatPageState = (): UseChatPageStateResult => {
               },
             ]);
 
-            // Refresh repositories list and auto-select the new one
+            // Refresh repositories list
             await fetchRepositories();
+
+            // Optimistically add the new repo to the list if it's not there yet (handling ES latency)
+            const newRepo: Repository = {
+              owner,
+              repo,
+              defaultBranch: "",
+              url: trimmedUrl,
+              displayName: repoId,
+            };
+
+            setRepositories(prev => {
+              if (prev.some(r => r.displayName === repoId)) return prev;
+              return [...prev, newRepo];
+            });
+
             setSelectedRepoId(repoId);
+            setUrl(trimmedUrl);
+            await fetchDirectoryTree(trimmedUrl);
           } else {
             setMessages((prev) => [
               ...prev,
@@ -909,7 +927,20 @@ const useChatPageState = (): UseChatPageStateResult => {
   const handleChatSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!inputMessage.trim() || !treeStructure || !repoUrl) return;
+    if (!inputMessage.trim()) return;
+
+    if (!repoUrl) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          sender: "bot",
+          text: "⚠️ Please select a repository or enter a URL first.",
+          sourceFiles: [],
+        },
+      ]);
+      return;
+    }
+
     if (!effectiveHasApiKey) {
       // Don't show modal if using environment variable in force mode
       if (!debugForceEnv) {
@@ -1320,10 +1351,10 @@ const useChatPageState = (): UseChatPageStateResult => {
           prevTabs.map((tab) =>
             tab.id === tabId && tab.filePath === expectedPath
               ? {
-                  ...tab,
-                  fileContent: null,
-                  error: errorMessage,
-                }
+                ...tab,
+                fileContent: null,
+                error: errorMessage,
+              }
               : tab
           )
         );
@@ -1357,10 +1388,10 @@ const useChatPageState = (): UseChatPageStateResult => {
           prevTabs.map((tab) =>
             tab.id === tabId && tab.filePath === expectedPath
               ? {
-                  ...tab,
-                  fileContent: null,
-                  error: errorMessage,
-                }
+                ...tab,
+                fileContent: null,
+                error: errorMessage,
+              }
               : tab
           )
         );
@@ -1381,10 +1412,10 @@ const useChatPageState = (): UseChatPageStateResult => {
           prevTabs.map((tab) =>
             tab.id === tabId && tab.filePath === expectedPath
               ? {
-                  ...tab,
-                  fileContent: null,
-                  error: errorMessage,
-                }
+                ...tab,
+                fileContent: null,
+                error: errorMessage,
+              }
               : tab
           )
         );
@@ -1404,12 +1435,12 @@ const useChatPageState = (): UseChatPageStateResult => {
         prevTabs.map((tab) =>
           tab.id === tabId && tab.filePath === expectedPath
             ? {
-                ...tab,
-                fileContent: data.content,
-                fileType: data.type,
-                contentType: data.content_type,
-                error: undefined, // Clear any previous errors
-              }
+              ...tab,
+              fileContent: data.content,
+              fileType: data.type,
+              contentType: data.content_type,
+              error: undefined, // Clear any previous errors
+            }
             : tab
         )
       );
@@ -1422,10 +1453,10 @@ const useChatPageState = (): UseChatPageStateResult => {
         prevTabs.map((tab) =>
           tab.id === tabId && tab.filePath === expectedPath
             ? {
-                ...tab,
-                fileContent: null,
-                error: message,
-              }
+              ...tab,
+              fileContent: null,
+              error: message,
+            }
             : tab
         )
       );
@@ -1475,15 +1506,15 @@ const useChatPageState = (): UseChatPageStateResult => {
       prev.map((t) =>
         t.id === tabId
           ? {
-              ...t,
-              name,
-              color,
-              filePath,
-              fileContent: "Loading...",
-              fileType: undefined,
-              contentType: undefined,
-              error: undefined
-            }
+            ...t,
+            name,
+            color,
+            filePath,
+            fileContent: "Loading...",
+            fileType: undefined,
+            contentType: undefined,
+            error: undefined
+          }
           : t
       )
     );
@@ -1712,10 +1743,14 @@ const useChatPageState = (): UseChatPageStateResult => {
           },
         ]);
         // Clear all repository-related state
-        setRepositories([]);
+        // Refresh repositories list
+        // Refresh repositories list
+        await fetchRepositories();
         setSelectedRepoId(null);
         setTreeStructure(null);
         setUrl("");
+
+        setTreeStructure(null);
         setTreeCurrentPath([]);
         setTabs([]);
         setActiveTabId(0);

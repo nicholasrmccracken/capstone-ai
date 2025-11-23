@@ -187,7 +187,7 @@ const renderFileContent = (tab: Tab | undefined) => {
           }}
         />
         <div className="p-4 bg-gray-800 text-center text-gray-400 text-sm">
-          If the PDF doesn't display above, click "Download PDF" to view it locally.
+          If the PDF doesn&apos;t display above, click &quot;Download PDF&quot; to view it locally.
         </div>
       </div>
     );
