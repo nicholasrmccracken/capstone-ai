@@ -3,7 +3,9 @@ import { useState, type DragEvent } from "react";
 import type { Tab } from "../types";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
-import { X, Plus, Copy, Check, ShieldAlert } from "lucide-react";
+import { X, Plus, Copy, Check, ShieldAlert, Eye, Code } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface CodeViewerProps {
   className: string;
@@ -42,7 +44,7 @@ const CopyButton = ({ content }: { content: string }) => {
   );
 };
 
-const renderFileContent = (tab: Tab | undefined) => {
+const renderFileContent = (tab: Tab | undefined, isMarkdownPreview: boolean) => {
   if (!tab) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-gray-500">
@@ -220,6 +222,17 @@ const renderFileContent = (tab: Tab | undefined) => {
   };
   const language = languageMap[extension] || 'text';
 
+  // Render markdown preview if enabled
+  if (isMarkdownPreview && extension === 'md') {
+    return (
+      <div className="h-full overflow-auto p-6 markdown-content">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+          {tab.fileContent}
+        </ReactMarkdown>
+      </div>
+    );
+  }
+
   return (
     <div className="relative h-full group">
       <div className="absolute top-2 right-4 z-10 opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 rounded-md backdrop-blur-sm">
@@ -265,7 +278,13 @@ const CodeViewer = ({
   onAssessActiveFile,
   isAssessingFile,
   canAssessFiles,
-}: CodeViewerProps) => (
+}: CodeViewerProps) => {
+  const [isMarkdownPreview, setIsMarkdownPreview] = useState(false);
+
+  // Check if current file is markdown
+  const isMarkdownFile = activeTab?.name.toLowerCase().endsWith('.md');
+
+  return (
   <div className={`${className} flex flex-col bg-[#1e1e1e]/50 backdrop-blur-sm`}>
     {/* Tab Bar */}
     <div className="flex items-center bg-[#1e1e1e]/80 border-b border-white/5 px-2 pt-2 overflow-x-auto no-scrollbar">
@@ -321,32 +340,47 @@ const CodeViewer = ({
         <div className="text-xs text-gray-500 font-mono truncate">
           {activeTab.filePath}
         </div>
-        <button
-          type="button"
-          className={`
-            flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md transition-all
-            ${isAssessingFile
-              ? "bg-blue-500/20 text-blue-300 cursor-wait"
-              : canAssessFiles
-                ? "bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 border border-blue-500/20"
-                : "opacity-50 cursor-not-allowed text-gray-500"
-            }
-          `}
-          onClick={() => onAssessActiveFile(activeTab.filePath!)}
-          disabled={isAssessingFile || !canAssessFiles}
-        >
-          <ShieldAlert size={14} />
-          {isAssessingFile ? "Assessing..." : "Assess Security"}
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Markdown Preview Button */}
+          {isMarkdownFile && (
+            <button
+              type="button"
+              className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md transition-all bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 border border-purple-500/20"
+              onClick={() => setIsMarkdownPreview(!isMarkdownPreview)}
+            >
+              {isMarkdownPreview ? <Code size={14} /> : <Eye size={14} />}
+              {isMarkdownPreview ? "Code" : "Preview"}
+            </button>
+          )}
+          {/* Assess Security Button */}
+          <button
+            type="button"
+            className={`
+              flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md transition-all
+              ${isAssessingFile
+                ? "bg-blue-500/20 text-blue-300 cursor-wait"
+                : canAssessFiles
+                  ? "bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 border border-blue-500/20"
+                  : "opacity-50 cursor-not-allowed text-gray-500"
+              }
+            `}
+            onClick={() => onAssessActiveFile(activeTab.filePath!)}
+            disabled={isAssessingFile || !canAssessFiles}
+          >
+            <ShieldAlert size={14} />
+            {isAssessingFile ? "Assessing..." : "Assess Security"}
+          </button>
+        </div>
       </div>
     )}
 
     {/* Content Area */}
     <div className="flex-1 overflow-hidden bg-[#1e1e1e]/30 relative">
-      {renderFileContent(activeTab)}
+      {renderFileContent(activeTab, isMarkdownPreview)}
     </div>
   </div>
-);
+  );
+};
 
 export default CodeViewer;
 
