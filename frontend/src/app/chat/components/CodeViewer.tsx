@@ -285,7 +285,7 @@ const CodeViewer = ({
   const isMarkdownFile = activeTab?.name.toLowerCase().endsWith('.md');
 
   return (
-  <div className={`${className} flex flex-col bg-[#1e1e1e]/50 backdrop-blur-sm`}>
+  <div className={`${className} flex flex-col bg-[#1e1e1e]/50 backdrop-blur-sm rounded-xl overflow-hidden`}>
     {/* Tab Bar */}
     <div className="flex items-center bg-[#1e1e1e]/80 border-b border-white/5 px-2 pt-2 overflow-x-auto no-scrollbar">
       {tabs.map((tab) => (

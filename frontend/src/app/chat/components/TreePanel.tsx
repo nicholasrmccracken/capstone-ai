@@ -175,7 +175,7 @@ const TreePanel = ({
       : treeCurrentPath[treeCurrentPath.length - 1];
 
   return (
-    <div className={`${className} flex flex-col bg-[#1e1e1e]/50 backdrop-blur-sm`}>
+    <div className={`${className} flex flex-col bg-[#1e1e1e]/50 backdrop-blur-sm rounded-xl overflow-hidden`}>
       <div className="p-4 space-y-4">
         {/* API Key Warning */}
         {!effectiveHasApiKey && !debugForceEnv && (

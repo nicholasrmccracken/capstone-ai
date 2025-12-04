@@ -53,7 +53,7 @@ const ChatPanel = ({
   onAtButtonClick,
   isAwaitingResponse,
 }: ChatPanelProps) => (
-  <div className={`${className} bg-[#1e1e1e]/50 backdrop-blur-sm`} style={style}>
+  <div className={`${className} bg-[#1e1e1e]/50 backdrop-blur-sm rounded-xl overflow-hidden`} style={style}>
     {/* Header */}
     <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-[#1e1e1e]/80">
       <h3 className="text-sm font-semibold text-gray-200 flex items-center gap-2">
